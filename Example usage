@@ -1,0 +1,291 @@
+"""
+Sial-Compliance-Pro Example Usage Script
+Demonstrates the complete gap analysis workflow
+"""
+
+from pathlib import Path
+import sys
+
+# Add app directory to path
+sys.path.insert(0, str(Path(__file__).parent / 'app'))
+
+from utils.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
+from config import settings, ConformityStatus
+from utils.llm_analyzer import ClaudeAnalyzer
+
+
+def example_complete_workflow():
+    """
+    Complete workflow example from document ingestion to report generation
+    """
+    print("=" * 80)
+    print("SIAL-COMPLIANCE-PRO - COMPLETE WORKFLOW EXAMPLE")
+    print("=" * 80)
+    
+    # Step 1: Initialize the engine
+    print("\n[Step 1] Initializing Gap Analysis Engine...")
+    engine = GapAnalysisEngine()
+    
+    # Step 2: Ingest IOSA Standards Manual
+    print("\n[Step 2] Ingesting IOSA Standards Manual...")
+    # Replace with actual ISM path
+    ism_path = settings.ism_dir / "IOSA_Standards_Manual_2024.pdf"
+    
+    if ism_path.exists():
+        isarp_count = engine.ingest_ism_manual(ism_path)
+        print(f"   ✓ Loaded {isarp_count} ISARPs from ISM")
+    else:
+        print(f"   ⚠ ISM not found at {ism_path}")
+        print("   ⚠ Please place your ISM PDF in the data/ism/ directory")
+        return
+    
+    # Step 3: Ingest Airline Manuals
+    print("\n[Step 3] Ingesting Airline Internal Manuals...")
+    
+    # Example manual paths (replace with actual paths)
+    manual_files = [
+        settings.manuals_dir / "Flight_Operations_Manual.pdf",
+        settings.manuals_dir / "Company_Operations_Manual.pdf",
+        settings.manuals_dir / "Maintenance_Manual.pdf"
+    ]
+    
+    for manual_path in manual_files:
+        if manual_path.exists():
+            manual_type = engine.ingest_airline_manual(manual_path)
+            print(f"   ✓ Loaded {manual_path.name} ({manual_type})")
+        else:
+            print(f"   ⚠ Manual not found: {manual_path.name}")
+    
+    # Step 4: Check IPM Section 1.1.1 Compliance
+    print("\n[Step 4] Checking IPM Section 1.1.1 Compliance...")
+    print("   (Documented Policies and Resource Provision)")
+    
+    ipm_assessment = engine.check_ipm_1_1_1_compliance()
+    
+    if 'error' not in ipm_assessment:
+        print(f"   - Has Documented Policy: {ipm_assessment.get('has_documented_policy', False)}")
+        print(f"   - Has Resource Provision: {ipm_assessment.get('has_resource_provision', False)}")
+        print(f"   - Policy Clarity: {ipm_assessment.get('policy_clarity', 'N/A')}")
+        print(f"   - Compliant: {ipm_assessment.get('compliant', False)}")
+        
+        if ipm_assessment.get('gaps'):
+            print("\n   Gaps Identified:")
+            for gap in ipm_assessment['gaps']:
+                print(f"     • {gap}")
+    
+    # Step 5: Run Gap Analysis
+    print("\n[Step 5] Running Gap Analysis...")
+    
+    # Example: Analyze only ORG category ISARPs
+    print("   Analyzing ORG (Organization and Management) category...")
+    results = engine.run_gap_analysis(category="ORG")
+    
+    print(f"\n   Analysis Complete!")
+    print(f"   - ISARPs Analyzed: {len(results)}")
+    
+    # Step 6: Review Results
+    print("\n[Step 6] Analysis Results Summary...")
+    stats = engine.get_statistics()
+    
+    print(f"   - Conformity: {stats['conformity_count']}")
+    print(f"   - Findings: {stats['findings_count']}")
+    print(f"   - Observations: {stats['observations_count']}")
+    print(f"   - Pending Evidence: {stats['pending_evidence_count']}")
+    
+    # Show sample findings
+    findings = [r for r in results if r.get('status') == ConformityStatus.FINDING]
+    if findings:
+        print("\n   Sample Findings:")
+        for finding in findings[:3]:
+            print(f"\n   🔴 {finding.get('isarp_code')}: {finding.get('isarp_title')}")
+            print(f"      Gap: {finding.get('documentation_gap', 'N/A')[:100]}...")
+    
+    # Step 7: Add Evidence Documents
+    print("\n[Step 7] Evidence Management...")
+    
+    # Example: Add evidence for a specific ISARP
+    evidence_example_path = settings.evidence_dir / "ORG_111_Policy_Document.pdf"
+    
+    if evidence_example_path.exists():
+        print(f"   Adding evidence for ORG 1.1.1...")
+        validation = engine.add_evidence_document(
+            isarp_code="ORG 1.1.1",
+            pdf_path=evidence_example_path,
+            evidence_type="Policy Document"
+        )
+        
+        print(f"   - Evidence Valid: {validation.get('is_valid_evidence', False)}")
+        print(f"   - Evidence Quality: {validation.get('evidence_quality', 'N/A')}")
+    else:
+        print("   ⚠ No evidence documents available for demonstration")
+    
+    # Step 8: Generate Reports
+    print("\n[Step 8] Generating Reports...")
+    
+    # Excel report
+    report_path = settings.outputs_dir / "gap_analysis_report.xlsx"
+    df_report = engine.generate_compliance_report(report_path)
+    print(f"   ✓ Excel report saved to: {report_path}")
+    
+    # Executive summary
+    print("\n   Generating Executive Summary...")
+    summary = engine.generate_executive_summary()
+    print("\n" + "=" * 80)
+    print("EXECUTIVE SUMMARY")
+    print("=" * 80)
+    print(summary)
+    
+    # Step 9: Export Full Audit Package
+    print("\n\n[Step 9] Exporting Full Audit Package...")
+    
+    output_dir = settings.outputs_dir / "audit_package"
+    package_files = engine.export_audit_package(output_dir)
+    
+    print("   ✓ Audit package exported:")
+    for file_type, file_path in package_files.items():
+        print(f"     - {file_type}: {file_path}")
+    
+    print("\n" + "=" * 80)
+    print("WORKFLOW COMPLETE!")
+    print("=" * 80)
+
+
+def example_specific_isarp_analysis():
+    """
+    Example: Analyze specific ISARPs only
+    """
+    print("\n[Example] Analyzing Specific ISARPs")
+    print("=" * 80)
+    
+    engine = GapAnalysisEngine()
+    
+    # Analyze specific ISARPs
+    specific_isarps = ["ORG 1.1.1", "FLT 2.3.5", "MNT 1.2.3"]
+    
+    print(f"Analyzing ISARPs: {', '.join(specific_isarps)}")
+    
+    results = engine.run_gap_analysis(isarp_codes=specific_isarps)
+    
+    for result in results:
+        print(f"\n{result.get('isarp_code')}")
+        print(f"  Status: {result.get('status')}")
+        print(f"  Confidence: {result.get('confidence', 0)*100:.1f}%")
+        print(f"  Gap: {result.get('documentation_gap', 'N/A')[:150]}...")
+
+
+def example_batch_evidence_upload():
+    """
+    Example: Batch upload evidence documents
+    """
+    print("\n[Example] Batch Evidence Upload")
+    print("=" * 80)
+    
+    engine = GapAnalysisEngine()
+    
+    # Define evidence documents to upload
+    evidence_mappings = [
+        {
+            "isarp_code": "ORG 1.1.1",
+            "file": "Safety_Policy_2024.pdf",
+            "type": "Policy Document"
+        },
+        {
+            "isarp_code": "ORG 1.2.1",
+            "file": "Training_Records_Q1_2024.pdf",
+            "type": "Training Record"
+        },
+        {
+            "isarp_code": "FLT 2.3.5",
+            "file": "Flight_Ops_Audit_Report.pdf",
+            "type": "Audit Report"
+        }
+    ]
+    
+    for evidence in evidence_mappings:
+        evidence_path = settings.evidence_dir / evidence["file"]
+        
+        if evidence_path.exists():
+            print(f"\nUploading evidence for {evidence['isarp_code']}...")
+            
+            validation = engine.add_evidence_document(
+                isarp_code=evidence["isarp_code"],
+                pdf_path=evidence_path,
+                evidence_type=evidence["type"]
+            )
+            
+            print(f"  File: {evidence['file']}")
+            print(f"  Valid: {validation.get('is_valid_evidence', False)}")
+            print(f"  Quality: {validation.get('evidence_quality', 'N/A')}")
+        else:
+            print(f"  ⚠ File not found: {evidence['file']}")
+
+
+def example_quick_analysis():
+    """
+    Example: Quick analysis using the helper function
+    """
+    print("\n[Example] Quick Gap Analysis")
+    print("=" * 80)
+    
+    # Define file paths
+    ism_path = settings.ism_dir / "IOSA_Standards_Manual_2024.pdf"
+    manual_paths = [
+        settings.manuals_dir / "Flight_Operations_Manual.pdf",
+        settings.manuals_dir / "Company_Operations_Manual.pdf"
+    ]
+    
+    # Check if files exist
+    if not ism_path.exists():
+        print(f"⚠ ISM not found at {ism_path}")
+        return
+    
+    manual_paths = [p for p in manual_paths if p.exists()]
+    
+    if not manual_paths:
+        print("⚠ No airline manuals found")
+        return
+    
+    # Run quick analysis
+    print("Running quick analysis for ORG category...")
+    
+    result = quick_gap_analysis(
+        ism_path=ism_path,
+        manual_paths=manual_paths,
+        category="ORG"
+    )
+    
+    print(f"\nResults:")
+    print(f"  ISARPs Analyzed: {len(result['results'])}")
+    print(f"  Statistics: {result['statistics']}")
+    
+    # Access the report DataFrame
+    df = result['report']
+    print(f"\nReport Preview:")
+    print(df.head())
+
+
+if __name__ == "__main__":
+    print("\n" + "=" * 80)
+    print("SIAL-COMPLIANCE-PRO - EXAMPLE USAGE SCRIPTS")
+    print("=" * 80)
+    
+    print("\nAvailable Examples:")
+    print("1. Complete Workflow (recommended)")
+    print("2. Specific ISARP Analysis")
+    print("3. Batch Evidence Upload")
+    print("4. Quick Analysis")
+    
+    choice = input("\nSelect example to run (1-4) or press Enter for complete workflow: ").strip()
+    
+    if choice == "2":
+        example_specific_isarp_analysis()
+    elif choice == "3":
+        example_batch_evidence_upload()
+    elif choice == "4":
+        example_quick_analysis()
+    else:
+        example_complete_workflow()
+    
+    print("\n" + "=" * 80)
+    print("Example execution completed!")
+    print("=" * 80)
