@@ -194,6 +194,26 @@ def get_statistics():
         'observations_count': observations,
         'pending_evidence_count': pending
     }
+# Key Improvements for Authentic IOSA Analysis
+def analyze_gap(self, isarp: ISARPRequirement, manual_passages: List[Dict]) -> Dict:
+    """
+    Enhanced analysis requiring specific Documentation (D) and Implementation (I) proof.
+    """
+    # Force the AI to act as a certified IOSA Auditor
+    prompt = f"""You are a Lead IOSA Auditor. Follow the IATA IPM strictly.
+    
+    ISARP: {isarp.code}
+    {isarp.requirement_text}
+
+    AUDIT PROTOCOL:
+    1. Verify Documentation: Does the manual contain mandatory language?
+    2. Verify Implementation: Identify specific records (logs, rosters, reports) that prove 
+       this is happening in daily operations.
+    3. Technical Check: Compare numeric values against ICAO/EASA standards.
+    
+    If any piece is missing, you MUST mark it as a FINDING or PENDING EVIDENCE.
+    """
+    # ... rest of the API call logic ...
 
 def simulate_gap_analysis(isarp_code):
     """Simulate gap analysis"""
