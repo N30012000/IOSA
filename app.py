@@ -318,7 +318,7 @@ def show_document_ingestion():
                         st.success(f"✅ Loaded {len(isarps)} ISARPs")
                         
                         if isarps:
-                            df = pd.DataFrame(isarps[:10])
+                            df = pd.DataFrame(isarps)
                             st.dataframe(df[['code', 'category']])
     
     with tab2:
