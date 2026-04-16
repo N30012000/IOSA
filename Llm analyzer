@@ -1,0 +1,363 @@
+"""
+LLM Analyzer Module
+Uses Claude 3.5 Sonnet to perform intelligent gap analysis
+"""
+
+import anthropic
+from typing import List, Dict, Optional, Tuple
+from loguru import logger
+import json
+import re
+
+from app.config import settings, ConformityStatus, EvidenceType
+from app.utils.pdf_parser import ISARPRequirement
+
+
+class ClaudeAnalyzer:
+    """Claude API integration for compliance analysis"""
+    
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or settings.anthropic_api_key
+        self.client = anthropic.Anthropic(api_key=self.api_key)
+        self.model = settings.claude_model
+        self.max_tokens = settings.max_tokens
+        self.temperature = settings.temperature
+    
+    def analyze_gap(self, isarp: ISARPRequirement, manual_passages: List[Dict]) -> Dict:
+        """
+        Perform comprehensive gap analysis between ISARP and manual provisions
+        
+        Args:
+            isarp: ISARP requirement object
+            manual_passages: List of relevant manual passages from vector search
+        
+        Returns:
+            Dictionary with conformity assessment and detailed reasoning
+        """
+        # Build the analysis prompt
+        prompt = self._build_gap_analysis_prompt(isarp, manual_passages)
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                messages=[
+                    {"role": "user", "content": prompt}
+                ]
+            )
+            
+            # Parse response
+            result = self._parse_gap_analysis_response(response.content[0].text)
+            
+            # Add metadata
+            result["isarp_code"] = isarp.code
+            result["isarp_title"] = isarp.title
+            result["analyzed_passages_count"] = len(manual_passages)
+            
+            logger.info(f"Gap analysis completed for {isarp.code}: {result['status']}")
+            return result
+            
+        except Exception as e:
+            logger.error(f"Error in gap analysis for {isarp.code}: {e}")
+            return {
+                "isarp_code": isarp.code,
+                "status": ConformityStatus.NOT_ASSESSED,
+                "reasoning": f"Error during analysis: {str(e)}",
+                "confidence": 0.0
+            }
+    
+    def _build_gap_analysis_prompt(self, isarp: ISARPRequirement, 
+                                  manual_passages: List[Dict]) -> str:
+        """Build detailed prompt for gap analysis"""
+        
+        # Format manual passages
+        passages_text = "\n\n".join([
+            f"PASSAGE {i+1} (from {p['metadata']['manual_type']}, "
+            f"page {p['metadata']['page_number']}):\n{p['text']}"
+            for i, p in enumerate(manual_passages)
+        ])
+        
+        prompt = f"""You are an expert IOSA (IATA Operational Safety Audit) auditor specializing in aviation regulatory compliance. Your task is to perform a detailed gap analysis between IOSA Standards and airline internal procedures.
+
+REGULATORY CONTEXT:
+- IOSA Standards are based on ICAO Annexes and EASA regulations
+- Compliance must include both DOCUMENTATION and IMPLEMENTATION proof
+- Per IPM Section 6.7.1: Evidence of implementation is mandatory
+- Per IPM Section 1.1.1: Documented policies AND resource provision must be demonstrated
+
+ISARP REQUIREMENT:
+Code: {isarp.code}
+Category: {isarp.category} - {isarp.title}
+Requirement Text:
+{isarp.requirement_text}
+
+Evidence Required: {', '.join(isarp.evidence_required)}
+
+AIRLINE MANUAL PROVISIONS (Most Relevant Passages):
+{passages_text}
+
+ANALYSIS INSTRUCTIONS:
+Evaluate the airline's compliance with this ISARP using the following criteria:
+
+1. DOCUMENTATION CHECK:
+   - Does the manual explicitly address this requirement?
+   - Is the language sufficiently specific and mandatory (uses "shall", "must", "will")?
+   - Are there any ambiguities or gaps in the documented procedure?
+
+2. TECHNICAL SPECIFICATIONS ALIGNMENT:
+   - Do the manual provisions meet the technical specifications derived from ICAO/EASA?
+   - Are numeric/quantitative requirements (if any) met?
+   - Are there any deviations from the standard?
+
+3. IMPLEMENTATION EVIDENCE (IPM 6.7.1):
+   - What type of proof is needed (records, logs, reports, audits)?
+   - Is the manual provision actionable (can it be implemented and verified)?
+   - What evidence would demonstrate compliance?
+
+4. IPM 1.1.1 COMPLIANCE (if applicable to ORG requirements):
+   - Is there a documented policy statement?
+   - Is provision of resources explicitly mentioned?
+   - Is management commitment evident?
+
+5. CONFORMITY CLASSIFICATION:
+   - CONFORMITY: Full compliance with documentation AND evidence available
+   - FINDING: Non-compliance that could affect safety (mandatory requirement not met)
+   - OBSERVATION: Minor gap with no immediate safety impact (recommended practice not fully met)
+   - PENDING EVIDENCE: Documentation exists but implementation proof needed
+
+Respond in the following JSON format:
+{{
+    "status": "CONFORMITY|FINDING|OBSERVATION|PENDING_EVIDENCE",
+    "confidence": 0.0-1.0,
+    "documentation_gap": "Description of any documentation gaps",
+    "implementation_gap": "Description of missing implementation evidence",
+    "specific_findings": ["List", "of", "specific", "issues"],
+    "manual_references": ["Page X, section Y", "..."],
+    "evidence_required": ["Type of evidence needed"],
+    "recommended_actions": ["Specific actions to achieve conformity"],
+    "reasoning": "Detailed explanation of the assessment"
+}}
+
+Be precise, objective, and cite specific manual references. If information is insufficient, classify as PENDING_EVIDENCE and specify what's needed.
+"""
+        
+        return prompt
+    
+    def _parse_gap_analysis_response(self, response_text: str) -> Dict:
+        """Parse Claude's response into structured format"""
+        try:
+            # Extract JSON from response
+            # Claude might wrap JSON in markdown code blocks
+            json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
+            if json_match:
+                json_text = json_match.group(1)
+            else:
+                # Try to find JSON directly
+                json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+                if json_match:
+                    json_text = json_match.group(0)
+                else:
+                    json_text = response_text
+            
+            result = json.loads(json_text)
+            
+            # Validate required fields
+            required_fields = ["status", "confidence", "reasoning"]
+            for field in required_fields:
+                if field not in result:
+                    result[field] = "N/A" if field != "confidence" else 0.0
+            
+            return result
+            
+        except json.JSONDecodeError as e:
+            logger.error(f"Failed to parse JSON response: {e}")
+            # Return a structured error response
+            return {
+                "status": ConformityStatus.NOT_ASSESSED,
+                "confidence": 0.0,
+                "reasoning": "Failed to parse analysis response",
+                "raw_response": response_text
+            }
+    
+    def assess_ipm_1_1_1_compliance(self, manual_passages: List[Dict]) -> Dict:
+        """
+        Specific assessment for IPM Section 1.1.1:
+        Documented Policies and Resource Provision
+        """
+        prompt = f"""You are analyzing airline documentation for compliance with IOSA IPM Section 1.1.1: "Documented Policies and Provision of Resources".
+
+REQUIREMENT DETAILS:
+The airline must demonstrate:
+1. Documented policies for safety, operations, and quality
+2. Explicit commitment to provide necessary resources
+3. Management accountability statements
+4. Resource allocation framework
+
+AIRLINE DOCUMENTATION:
+{self._format_passages(manual_passages)}
+
+ASSESSMENT CRITERIA:
+Evaluate if the documentation contains:
+- Clear policy statements
+- Resource provision commitments
+- Specific resource types mentioned (personnel, equipment, training, facilities)
+- Accountability assignment
+- Review and update mechanisms
+
+Respond in JSON format:
+{{
+    "has_documented_policy": true/false,
+    "has_resource_provision": true/false,
+    "policy_clarity": "HIGH|MEDIUM|LOW",
+    "resource_specificity": "HIGH|MEDIUM|LOW",
+    "gaps": ["List of missing elements"],
+    "compliant": true/false,
+    "recommendations": ["Specific improvements needed"]
+}}
+"""
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=self.max_tokens,
+                temperature=self.temperature,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            return self._parse_gap_analysis_response(response.content[0].text)
+        except Exception as e:
+            logger.error(f"Error in IPM 1.1.1 assessment: {e}")
+            return {"error": str(e)}
+    
+    def validate_evidence_document(self, isarp: ISARPRequirement, 
+                                  evidence_text: str, 
+                                  evidence_type: str) -> Dict:
+        """
+        Validate if an evidence document actually proves compliance
+        Following IPM 6.7.1 implementation proof requirements
+        """
+        prompt = f"""You are validating evidence documentation for IOSA compliance.
+
+ISARP REQUIREMENT:
+{isarp.code}: {isarp.requirement_text}
+
+SUBMITTED EVIDENCE:
+Type: {evidence_type}
+Content:
+{evidence_text[:2000]}  # Limit to first 2000 chars
+
+VALIDATION CRITERIA:
+Does this evidence document prove that the requirement is IMPLEMENTED (not just documented)?
+
+Check for:
+1. Specific dates/timestamps showing the practice is active
+2. Real data/records (not just template statements)
+3. Personnel names, signatures, or approvals
+4. Quantifiable metrics or results
+5. Consistency with the requirement's technical specifications
+
+Respond in JSON:
+{{
+    "is_valid_evidence": true/false,
+    "evidence_quality": "STRONG|ADEQUATE|WEAK",
+    "proves_implementation": true/false,
+    "gaps": ["What's missing"],
+    "recommendation": "Accept/Request additional evidence/Reject"
+}}
+"""
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=2000,
+                temperature=0.1,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            return self._parse_gap_analysis_response(response.content[0].text)
+        except Exception as e:
+            logger.error(f"Error validating evidence: {e}")
+            return {"error": str(e)}
+    
+    def _format_passages(self, passages: List[Dict]) -> str:
+        """Format manual passages for prompt"""
+        return "\n\n".join([
+            f"[{p['metadata']['manual_type']}, Page {p['metadata']['page_number']}]\n{p['text']}"
+            for p in passages
+        ])
+    
+    def generate_compliance_summary(self, gap_analysis_results: List[Dict]) -> str:
+        """Generate executive summary of gap analysis results"""
+        
+        # Count statuses
+        status_counts = {}
+        for result in gap_analysis_results:
+            status = result.get('status', 'UNKNOWN')
+            status_counts[status] = status_counts.get(status, 0) + 1
+        
+        # Extract critical findings
+        findings = [r for r in gap_analysis_results if r.get('status') == ConformityStatus.FINDING]
+        observations = [r for r in gap_analysis_results if r.get('status') == ConformityStatus.OBSERVATION]
+        
+        prompt = f"""Generate an executive summary for an IOSA gap analysis audit.
+
+STATISTICS:
+Total ISARPs Assessed: {len(gap_analysis_results)}
+Conformity: {status_counts.get(ConformityStatus.CONFORMITY, 0)}
+Findings: {status_counts.get(ConformityStatus.FINDING, 0)}
+Observations: {status_counts.get(ConformityStatus.OBSERVATION, 0)}
+Pending Evidence: {status_counts.get(ConformityStatus.PENDING_EVIDENCE, 0)}
+
+CRITICAL FINDINGS:
+{json.dumps([{
+    'code': f.get('isarp_code'),
+    'issue': f.get('documentation_gap', 'N/A')
+} for f in findings[:5]], indent=2)}
+
+Generate a 3-paragraph executive summary highlighting:
+1. Overall compliance posture
+2. Critical areas requiring immediate attention
+3. Recommended next steps
+
+Keep it professional, objective, and audit-ready.
+"""
+        
+        try:
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1500,
+                temperature=0.3,
+                messages=[{"role": "user", "content": prompt}]
+            )
+            
+            return response.content[0].text
+        except Exception as e:
+            logger.error(f"Error generating summary: {e}")
+            return "Error generating summary."
+
+
+# Utility function for batch processing
+def batch_analyze_isarps(analyzer: ClaudeAnalyzer, 
+                        isarps: List[ISARPRequirement],
+                        vector_store,
+                        batch_size: int = 5) -> List[Dict]:
+    """
+    Batch process ISARP gap analysis
+    Processes in batches to manage API rate limits
+    """
+    results = []
+    
+    for i in range(0, len(isarps), batch_size):
+        batch = isarps[i:i + batch_size]
+        logger.info(f"Processing batch {i//batch_size + 1}/{len(isarps)//batch_size + 1}")
+        
+        for isarp in batch:
+            # Get relevant manual passages
+            manual_passages = vector_store.hybrid_search(isarp, top_k=5)
+            
+            # Analyze gap
+            result = analyzer.analyze_gap(isarp, manual_passages)
+            results.append(result)
+    
+    return results
