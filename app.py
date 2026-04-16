@@ -17,13 +17,13 @@ sys.path.insert(0, str(current_dir))
 # Now import with correct paths
 try:
     from app.config import settings, ConformityStatus, EvidenceType, ISARPParser
-    from app.utils.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
-    from app.utils.vectorizer import VectorStore
+    from app.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
+    from app.vectorizer import VectorStore
 except ImportError:
     # Alternative import for different directory structures
     from config import settings, ConformityStatus, EvidenceType, ISARPParser
-    from utils.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
-    from utils.vectorizer import VectorStore
+    from gap_analyzer import GapAnalysisEngine, quick_gap_analysis
+    from vectorizer import VectorStore
 
 
 # Page configuration
