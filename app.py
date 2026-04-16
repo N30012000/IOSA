@@ -293,6 +293,9 @@ def show_dashboard():
 def show_document_ingestion():
     st.header("📄 Document Ingestion")
     
+    # Updated to include Word documents
+    supported_types = ['pdf', 'docx', 'doc']
+    
     tab1, tab2 = st.tabs(["IOSA Standards Manual", "Airline Manuals"])
     
     with tab1:
