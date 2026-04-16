@@ -16,14 +16,15 @@ sys.path.insert(0, str(current_dir))
 
 # Now import with correct paths
 try:
-    from app.config import settings, ConformityStatus, EvidenceType, ISARPParser
-    from app.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
-    from app.vectorizer import VectorStore
+from config import settings, ConformityStatus, EvidenceType
+from pdf_parser import PDFParser, ISARPRequirement, process_ism_document, process_airline_manual
+from vectorizer import VectorStore, SemanticMatcher
+from llm_analyzer import ClaudeAnalyzer, batch_analyze_isarps
 except ImportError:
     # Alternative import for different directory structures
-    from config import settings, ConformityStatus, EvidenceType, ISARPParser
-    from gap_analyzer import GapAnalysisEngine, quick_gap_analysis
-    from vectorizer import VectorStore
+from config import settings, ConformityStatus, EvidenceType, ISARPParser
+from gap_analyzer import GapAnalysisEngine, quick_gap_analysis
+from vectorizer import VectorStore
 
 
 # Page configuration
