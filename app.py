@@ -8,13 +8,22 @@ from pathlib import Path
 import pandas as pd
 from datetime import datetime
 import sys
+import os
 
-# Add app directory to path
-sys.path.insert(0, str(Path(__file__).parent))
+# Fix import paths - add parent directory to Python path
+current_dir = Path(__file__).parent
+sys.path.insert(0, str(current_dir))
 
-from config import settings, ConformityStatus, EvidenceType, ISARPParser
-from utils.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
-from utils.vectorizer import VectorStore
+# Now import with correct paths
+try:
+    from app.config import settings, ConformityStatus, EvidenceType, ISARPParser
+    from app.utils.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
+    from app.utils.vectorizer import VectorStore
+except ImportError:
+    # Alternative import for different directory structures
+    from config import settings, ConformityStatus, EvidenceType, ISARPParser
+    from utils.gap_analyzer import GapAnalysisEngine, quick_gap_analysis
+    from utils.vectorizer import VectorStore
 
 
 # Page configuration
@@ -86,8 +95,7 @@ def main():
     
     # Sidebar navigation
     with st.sidebar:
-        st.image("https://via.placeholder.com/150x50/1f4788/ffffff?text=SIAL+Aviation", 
-                use_column_width=True)
+        st.markdown("### 🛩️ Sial Aviation")
         st.markdown("### Navigation")
         
         page = st.radio(
@@ -352,6 +360,8 @@ def show_gap_analysis():
                 
             except Exception as e:
                 st.error(f"❌ Error during analysis: {e}")
+                import traceback
+                st.code(traceback.format_exc())
     
     # Display results
     if st.session_state.analysis_complete and st.session_state.engine.gap_results:
