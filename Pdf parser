@@ -1,0 +1,337 @@
+"""
+PDF Parser Module
+Extracts text and metadata from IOSA Standards Manual and airline internal manuals
+"""
+
+import fitz  # PyMuPDF
+import pdfplumber
+import re
+from pathlib import Path
+from typing import List, Dict, Optional, Tuple
+from dataclasses import dataclass
+from loguru import logger
+import json
+
+
+@dataclass
+class DocumentChunk:
+    """Represents a chunk of text from a document"""
+    text: str
+    page_number: int
+    chunk_index: int
+    metadata: Dict
+    source_file: str
+    
+
+@dataclass
+class ISARPRequirement:
+    """Represents a parsed ISARP requirement"""
+    code: str  # e.g., "ORG 1.1.1"
+    title: str
+    requirement_text: str
+    guidance_text: Optional[str]
+    evidence_required: List[str]
+    category: str
+    page_number: int
+    source_file: str
+
+
+class PDFParser:
+    """Main PDF parsing class with support for ISM and airline manuals"""
+    
+    def __init__(self, chunk_size: int = 1000, chunk_overlap: int = 200):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+    
+    def extract_text_pymupdf(self, pdf_path: Path) -> List[Dict]:
+        """
+        Extract text using PyMuPDF (faster, good for standard PDFs)
+        Returns list of pages with text and metadata
+        """
+        pages = []
+        
+        try:
+            doc = fitz.open(pdf_path)
+            
+            for page_num, page in enumerate(doc, start=1):
+                text = page.get_text()
+                
+                # Extract metadata
+                metadata = {
+                    "page_number": page_num,
+                    "total_pages": len(doc),
+                    "source_file": pdf_path.name,
+                    "width": page.rect.width,
+                    "height": page.rect.height
+                }
+                
+                pages.append({
+                    "page_number": page_num,
+                    "text": text,
+                    "metadata": metadata
+                })
+            
+            doc.close()
+            logger.info(f"Extracted {len(pages)} pages from {pdf_path.name}")
+            return pages
+            
+        except Exception as e:
+            logger.error(f"Error extracting text from {pdf_path}: {e}")
+            raise
+    
+    def extract_text_pdfplumber(self, pdf_path: Path) -> List[Dict]:
+        """
+        Extract text using pdfplumber (better for tables and complex layouts)
+        """
+        pages = []
+        
+        try:
+            with pdfplumber.open(pdf_path) as pdf:
+                for page_num, page in enumerate(pdf.pages, start=1):
+                    text = page.extract_text()
+                    
+                    # Extract tables if present
+                    tables = page.extract_tables()
+                    
+                    metadata = {
+                        "page_number": page_num,
+                        "total_pages": len(pdf.pages),
+                        "source_file": pdf_path.name,
+                        "has_tables": len(tables) > 0,
+                        "table_count": len(tables)
+                    }
+                    
+                    pages.append({
+                        "page_number": page_num,
+                        "text": text,
+                        "tables": tables,
+                        "metadata": metadata
+                    })
+            
+            logger.info(f"Extracted {len(pages)} pages from {pdf_path.name}")
+            return pages
+            
+        except Exception as e:
+            logger.error(f"Error extracting text with pdfplumber from {pdf_path}: {e}")
+            raise
+    
+    def chunk_text(self, pages: List[Dict]) -> List[DocumentChunk]:
+        """
+        Split document pages into overlapping chunks for vector embedding
+        """
+        chunks = []
+        chunk_index = 0
+        
+        for page_data in pages:
+            text = page_data["text"]
+            page_num = page_data["page_number"]
+            metadata = page_data["metadata"]
+            
+            # Split text into sentences for better chunking
+            sentences = self._split_into_sentences(text)
+            
+            current_chunk = []
+            current_length = 0
+            
+            for sentence in sentences:
+                sentence_length = len(sentence)
+                
+                if current_length + sentence_length > self.chunk_size:
+                    # Save current chunk
+                    if current_chunk:
+                        chunk_text = " ".join(current_chunk)
+                        chunks.append(DocumentChunk(
+                            text=chunk_text,
+                            page_number=page_num,
+                            chunk_index=chunk_index,
+                            metadata=metadata,
+                            source_file=metadata["source_file"]
+                        ))
+                        chunk_index += 1
+                    
+                    # Start new chunk with overlap
+                    overlap_sentences = current_chunk[-2:] if len(current_chunk) > 2 else current_chunk
+                    current_chunk = overlap_sentences + [sentence]
+                    current_length = sum(len(s) for s in current_chunk)
+                else:
+                    current_chunk.append(sentence)
+                    current_length += sentence_length
+            
+            # Add remaining text as final chunk
+            if current_chunk:
+                chunk_text = " ".join(current_chunk)
+                chunks.append(DocumentChunk(
+                    text=chunk_text,
+                    page_number=page_num,
+                    chunk_index=chunk_index,
+                    metadata=metadata,
+                    source_file=metadata["source_file"]
+                ))
+                chunk_index += 1
+        
+        logger.info(f"Created {len(chunks)} chunks from document")
+        return chunks
+    
+    def _split_into_sentences(self, text: str) -> List[str]:
+        """Split text into sentences using regex"""
+        # Simple sentence splitter - can be improved with NLTK
+        sentences = re.split(r'(?<=[.!?])\s+', text)
+        return [s.strip() for s in sentences if s.strip()]
+    
+    def parse_isarp_requirements(self, pdf_path: Path) -> List[ISARPRequirement]:
+        """
+        Parse ISARP requirements from IOSA Standards Manual
+        Identifies requirements like ORG 1.1.1, FLT 2.3.5, etc.
+        """
+        pages = self.extract_text_pymupdf(pdf_path)
+        requirements = []
+        
+        # Pattern to match ISARP codes: ORG 1.1.1, FLT 2.3.5, etc.
+        isarp_pattern = r'\b([A-Z]{3})\s+(\d+\.\d+\.\d+)\b'
+        
+        for page_data in pages:
+            text = page_data["text"]
+            page_num = page_data["page_number"]
+            
+            # Find all ISARP codes on this page
+            matches = re.finditer(isarp_pattern, text)
+            
+            for match in matches:
+                category = match.group(1)
+                number = match.group(2)
+                code = f"{category} {number}"
+                
+                # Extract the requirement text (next 500 chars after code)
+                start_pos = match.end()
+                requirement_text = text[start_pos:start_pos + 500].strip()
+                
+                # Try to extract title (usually in bold or on same line)
+                title = self._extract_isarp_title(text, match.start())
+                
+                # Identify evidence keywords
+                evidence_required = self._identify_evidence_requirements(requirement_text)
+                
+                requirements.append(ISARPRequirement(
+                    code=code,
+                    title=title,
+                    requirement_text=requirement_text,
+                    guidance_text=None,  # Can be enhanced
+                    evidence_required=evidence_required,
+                    category=category,
+                    page_number=page_num,
+                    source_file=pdf_path.name
+                ))
+        
+        logger.info(f"Parsed {len(requirements)} ISARP requirements from {pdf_path.name}")
+        return requirements
+    
+    def _extract_isarp_title(self, text: str, code_position: int) -> str:
+        """Extract the title/heading for an ISARP requirement"""
+        # Look backwards for heading (usually within 100 chars)
+        context_before = text[max(0, code_position - 100):code_position]
+        lines = context_before.split('\n')
+        
+        # The title is usually the last non-empty line before the code
+        for line in reversed(lines):
+            line = line.strip()
+            if line and not line.isdigit():
+                return line
+        
+        return "Untitled Requirement"
+    
+    def _identify_evidence_requirements(self, text: str) -> List[str]:
+        """
+        Identify what type of evidence is needed based on requirement text
+        Following IPM 6.7.1 implementation proof requirements
+        """
+        evidence_types = []
+        
+        evidence_keywords = {
+            "policy": ["policy", "policies", "documented policy"],
+            "procedure": ["procedure", "SOP", "standard operating procedure"],
+            "record": ["record", "records", "documentation", "log"],
+            "training": ["training", "competency", "qualification"],
+            "audit": ["audit", "inspection", "verification"],
+            "resource": ["resource", "provision", "allocation"],
+            "manual": ["manual", "handbook"],
+            "report": ["report", "analysis", "assessment"]
+        }
+        
+        text_lower = text.lower()
+        
+        for evidence_type, keywords in evidence_keywords.items():
+            if any(keyword in text_lower for keyword in keywords):
+                evidence_types.append(evidence_type)
+        
+        return evidence_types if evidence_types else ["general documentation"]
+
+
+class ManualClassifier:
+    """Classify airline manuals by type"""
+    
+    MANUAL_TYPES = {
+        "FOM": "Flight Operations Manual",
+        "COM": "Company Operations Manual",
+        "FCOM": "Flight Crew Operating Manual",
+        "MEL": "Minimum Equipment List",
+        "AMM": "Aircraft Maintenance Manual",
+        "GMM": "Ground Handling Manual",
+        "SMS": "Safety Management System Manual",
+        "SECURITY": "Security Manual",
+        "DGM": "Dangerous Goods Manual"
+    }
+    
+    @staticmethod
+    def classify_manual(filename: str, text_sample: str = "") -> str:
+        """Classify manual type based on filename and content"""
+        filename_upper = filename.upper()
+        
+        for code, name in ManualClassifier.MANUAL_TYPES.items():
+            if code in filename_upper:
+                return name
+        
+        # Classify based on content keywords
+        content_keywords = {
+            "Flight Operations Manual": ["flight operations", "flight crew", "pilot"],
+            "Maintenance Manual": ["maintenance", "aircraft maintenance", "MEL"],
+            "Ground Handling Manual": ["ground handling", "ramp", "loading"],
+            "Safety Management": ["safety management", "SMS", "hazard"]
+        }
+        
+        for manual_type, keywords in content_keywords.items():
+            if any(keyword.lower() in text_sample.lower() for keyword in keywords):
+                return manual_type
+        
+        return "General Manual"
+
+
+# Example usage helper
+def process_ism_document(pdf_path: Path) -> Tuple[List[ISARPRequirement], List[DocumentChunk]]:
+    """Process IOSA Standards Manual and extract both requirements and chunks"""
+    parser = PDFParser()
+    
+    # Extract ISARP requirements
+    requirements = parser.parse_isarp_requirements(pdf_path)
+    
+    # Also create chunks for vector search
+    pages = parser.extract_text_pymupdf(pdf_path)
+    chunks = parser.chunk_text(pages)
+    
+    return requirements, chunks
+
+
+def process_airline_manual(pdf_path: Path) -> Tuple[str, List[DocumentChunk]]:
+    """Process airline internal manual"""
+    parser = PDFParser()
+    
+    # Extract text
+    pages = parser.extract_text_pymupdf(pdf_path)
+    
+    # Classify manual type
+    text_sample = pages[0]["text"] if pages else ""
+    manual_type = ManualClassifier.classify_manual(pdf_path.name, text_sample)
+    
+    # Create chunks
+    chunks = parser.chunk_text(pages)
+    
+    return manual_type, chunks
