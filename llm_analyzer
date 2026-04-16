@@ -67,78 +67,36 @@ class ClaudeAnalyzer:
                 "confidence": 0.0
             }
     
-    def _build_gap_analysis_prompt(self, isarp: ISARPRequirement, 
-                                  manual_passages: List[Dict]) -> str:
-        """Build detailed prompt for gap analysis"""
-        
-        # Format manual passages
-        passages_text = "\n\n".join([
-            f"PASSAGE {i+1} (from {p['metadata']['manual_type']}, "
-            f"page {p['metadata']['page_number']}):\n{p['text']}"
-            for i, p in enumerate(manual_passages)
-        ])
-        
-        prompt = f"""You are an expert IOSA (IATA Operational Safety Audit) auditor specializing in aviation regulatory compliance. Your task is to perform a detailed gap analysis between IOSA Standards and airline internal procedures.
+    def _build_gap_analysis_prompt(self, isarp: ISARPRequirement, manual_passages: List[Dict]) -> str:
+    passages_text = "\n\n".join([
+        f"SOURCE: {p['metadata']['manual_name']} | PAGE: {p['metadata']['page_number']}\nCONTENT: {p['text']}"
+        for p in manual_passages
+    ])
+    
+    return f"""You are a Lead IOSA Auditor. You must perform a line-by-line verification.
 
-REGULATORY CONTEXT:
-- IOSA Standards are based on ICAO Annexes and EASA regulations
-- Compliance must include both DOCUMENTATION and IMPLEMENTATION proof
-- Per IPM Section 6.7.1: Evidence of implementation is mandatory
-- Per IPM Section 1.1.1: Documented policies AND resource provision must be demonstrated
+ISARP REQUIREMENT to verify:
+{isarp.code}: {isarp.requirement_text}
 
-ISARP REQUIREMENT:
-Code: {isarp.code}
-Category: {isarp.category} - {isarp.title}
-Requirement Text:
-{isarp.requirement_text}
-
-Evidence Required: {', '.join(isarp.evidence_required)}
-
-AIRLINE MANUAL PROVISIONS (Most Relevant Passages):
+POTENTIAL MANUAL PROVISIONS:
 {passages_text}
 
-ANALYSIS INSTRUCTIONS:
-Evaluate the airline's compliance with this ISARP using the following criteria:
+INSTRUCTIONS:
+1. Locate the EXACT sentence in the provided passages that fulfills the ISARP.
+2. If found, provide the "Exact Quote" and the "Reference" (Manual Name and Page).
+3. If NO sentence fulfills the requirement, you MUST state "MISSING" in the manual_quote field.
+4. Categorize as CONFORMITY only if the quote uses mandatory language (shall/must).
 
-1. DOCUMENTATION CHECK:
-   - Does the manual explicitly address this requirement?
-   - Is the language sufficiently specific and mandatory (uses "shall", "must", "will")?
-   - Are there any ambiguities or gaps in the documented procedure?
-
-2. TECHNICAL SPECIFICATIONS ALIGNMENT:
-   - Do the manual provisions meet the technical specifications derived from ICAO/EASA?
-   - Are numeric/quantitative requirements (if any) met?
-   - Are there any deviations from the standard?
-
-3. IMPLEMENTATION EVIDENCE (IPM 6.7.1):
-   - What type of proof is needed (records, logs, reports, audits)?
-   - Is the manual provision actionable (can it be implemented and verified)?
-   - What evidence would demonstrate compliance?
-
-4. IPM 1.1.1 COMPLIANCE (if applicable to ORG requirements):
-   - Is there a documented policy statement?
-   - Is provision of resources explicitly mentioned?
-   - Is management commitment evident?
-
-5. CONFORMITY CLASSIFICATION:
-   - CONFORMITY: Full compliance with documentation AND evidence available
-   - FINDING: Non-compliance that could affect safety (mandatory requirement not met)
-   - OBSERVATION: Minor gap with no immediate safety impact (recommended practice not fully met)
-   - PENDING EVIDENCE: Documentation exists but implementation proof needed
-
-Respond in the following JSON format:
+RESPONSE FORMAT (Strict JSON):
 {{
-    "status": "CONFORMITY|FINDING|OBSERVATION|PENDING_EVIDENCE",
-    "confidence": 0.0-1.0,
-    "documentation_gap": "Description of any documentation gaps",
-    "implementation_gap": "Description of missing implementation evidence",
-    "specific_findings": ["List", "of", "specific", "issues"],
-    "manual_references": ["Page X, section Y", "..."],
-    "evidence_required": ["Type of evidence needed"],
-    "recommended_actions": ["Specific actions to achieve conformity"],
-    "reasoning": "Detailed explanation of the assessment"
+    "status": "CONFORMITY|FINDING|PENDING_EVIDENCE",
+    "isarp_code": "{isarp.code}",
+    "manual_quote": "The exact sentence from the manual or 'MISSING'",
+    "manual_reference": "Manual Name, Page X",
+    "documentation_gap": "If missing, explain exactly what the manual lacks",
+    "reasoning": "Brief audit justification"
 }}
-
+"""
 Be precise, objective, and cite specific manual references. If information is insufficient, classify as PENDING_EVIDENCE and specify what's needed.
 """
         
