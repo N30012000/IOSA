@@ -86,13 +86,35 @@ class GeminiAnalyzer:
         self._initialize_client()
     
     def _initialize_client(self):
-        """Initialize Gemini API client"""
+        """Initialize Gemini API client with automatic model detection"""
         try:
             import google.generativeai as genai
             genai.configure(api_key=self.api_key)
-            self.client = genai.GenerativeModel('models/gemini-1.5-pro')
+            
+            # Find an available model that supports generateContent
+            model_to_use = None
+            
+            # First, try to find Gemini 1.5 Pro
+            for model in genai.list_models():
+                if 'generateContent' in model.supported_generation_methods:
+                    if 'gemini-1.5-pro' in model.name:
+                        model_to_use = model.name
+                        break
+                    elif 'gemini' in model.name and not model_to_use:
+                        model_to_use = model.name
+            
+            if model_to_use:
+                self.client = genai.GenerativeModel(model_to_use)
+                st.success(f"✅ Gemini AI initialized with model: {model_to_use}")
+            else:
+                st.error("❌ No suitable Gemini model found. Please verify your API key has access to Gemini models.")
+                self.client = None
+                
         except Exception as e:
-            st.error(f"❌ Error initializing Gemini: {e}")
+            st.error(f"❌ Error initializing Gemini: {str(e)}")
+            self.client = None
+    
+    # ... rest of the methods remain the same ...
     
     def analyze_gap(self, isarp_code: str, isarp_text: str, manual_texts: List[str]) -> Dict:
         """
