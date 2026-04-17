@@ -440,7 +440,25 @@ for result in st.session_state.engine.gap_results:
             st.success(f"### ✅ {result['isarp_code']} - CONFORMITY")
             st.markdown(f"**Found in Manual:** \"{result['manual_quote']}\"")
             st.caption(f"**Reference:** {result['manual_reference']}")
+        if st.session_state.analysis_complete and st.session_state.engine.gap_results:
+    st.markdown("---")
+    st.subheader("📋 Audit Findings")
+    
+    for result in st.session_state.engine.gap_results:
+        # Check if the requirement was missing
+        is_missing = result.get('manual_quote') == "MISSING"
         
+        with st.expander(f"{'🔴' if is_missing else '✅'} {result.get('isarp_code')}", expanded=is_missing):
+            if is_missing:
+                st.error("**STATUS: FINDING - REQUIREMENT MISSING**")
+                st.markdown(f"**Gap Identified:** {result.get('documentation_gap')}")
+            else:
+                st.success("**STATUS: CONFORMITY**")
+                st.markdown(f"**Manual Quote:** *\"{result.get('manual_quote')}\"*")
+                st.caption(f"**Source:** {result.get('manual_reference')}")
+            
+            st.info(f"**Auditor Reasoning:** {result.get('reasoning')}")
+            
         st.divider()        
         df = pd.DataFrame([
             {
