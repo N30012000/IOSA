@@ -90,7 +90,7 @@ class GeminiAnalyzer:
         try:
             import google.generativeai as genai
             genai.configure(api_key=self.api_key)
-            self.client = genai.GenerativeModel('gemini-1.5-pro-latest')
+            self.client = genai.GenerativeModel('gemini-1.5-flash')
         except ImportError:
             st.error("❌ Google Generative AI not installed. Run: pip install google-generativeai")
         except Exception as e:
