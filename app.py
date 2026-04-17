@@ -87,45 +87,35 @@ class GeminiAnalyzer:
         self._initialize_client()
     
     def _initialize_client(self):
-        """Initialize Gemini API client with automatic model detection"""
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            
-            # Debug: List all available models
-            st.write("🔍 Debug: Checking available models...")
-            available_models = []
-            
-            for model in genai.list_models():
-                if 'generateContent' in model.supported_generation_methods:
-                    available_models.append(model.name)
-                    st.write(f"  - Found: {model.name}")
-                    
-                    # Look for Gemini models
-                    if 'gemini' in model.name.lower():
-                        if '1.5' in model.name and 'pro' in model.name.lower():
-                            self.model_name = model.name
-                            break
-                        elif not self.model_name and 'pro' in model.name.lower():
-                            self.model_name = model.name
-            
-            if self.model_name:
-                self.client = genai.GenerativeModel(self.model_name)
-                st.success(f"✅ Gemini AI initialized with model: {self.model_name}")
-            elif available_models:
-                # Use first available model that supports generateContent
-                self.model_name = available_models[0]
-                self.client = genai.GenerativeModel(self.model_name)
-                st.warning(f"⚠️ Using fallback model: {self.model_name}")
-            else:
-                st.error("❌ No models found that support generateContent")
-                self.client = None
-                
-        except Exception as e:
-            st.error(f"❌ Error initializing Gemini: {str(e)}")
-            import traceback
-            st.code(traceback.format_exc())
-            self.client = None
+    """Initialize Gemini API client with Gemini 2.0 Flash"""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=self.api_key)
+        
+        # Try these models in order
+        model_names = [
+            'gemini-2.0-flash-exp',  # Latest experimental
+            'gemini-1.5-flash',      # Faster, widely available
+            'gemini-pro',            # Original Gemini Pro
+            'models/gemini-pro'      # Alternative format
+        ]
+        
+        for model_name in model_names:
+            try:
+                self.client = genai.GenerativeModel(model_name)
+                self.model_name = model_name
+                st.success(f"✅ Connected to {model_name}")
+                return
+            except Exception as e:
+                st.warning(f"Failed to connect to {model_name}: {e}")
+                continue
+        
+        st.error("❌ Could not connect to any Gemini model")
+        self.client = None
+        
+    except Exception as e:
+        st.error(f"❌ Error: {e}")
+        self.client = None
     
     def analyze_gap(self, isarp_code: str, isarp_text: str, manual_texts: List[str]) -> Dict:
         """
