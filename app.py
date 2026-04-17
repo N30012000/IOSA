@@ -113,7 +113,20 @@ def initialize_session_state():
         st.session_state.isarps = []
     if 'analysis_results' not in st.session_state:
         st.session_state.analysis_results = []
+# Initialize session state for persistence
+if 'engine' not in st.session_state:
+    from gap_analyzer import GapAnalysisEngine
+    st.session_state.engine = GapAnalysisEngine()
 
+# Ensure gap_results exists even before the first analysis
+if not hasattr(st.session_state.engine, 'gap_results'):
+    st.session_state.engine.gap_results = []
+
+# Other session flags
+for key, default in [('ism_loaded', False), ('manuals_loaded', []), ('analysis_complete', False)]:
+    if key not in st.session_state:
+        st.session_state[key] = default
+        
 initialize_session_state()
 
 # ============================================================================
