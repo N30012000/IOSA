@@ -83,6 +83,7 @@ class GeminiAnalyzer:
     def __init__(self, api_key: str):
         self.api_key = api_key
         self.client = None
+        self.model_name = None
         self._initialize_client()
     
     def _initialize_client(self):
@@ -91,93 +92,95 @@ class GeminiAnalyzer:
             import google.generativeai as genai
             genai.configure(api_key=self.api_key)
             
-            # Find an available model that supports generateContent
-            model_to_use = None
+            # Debug: List all available models
+            st.write("🔍 Debug: Checking available models...")
+            available_models = []
             
-            # First, try to find Gemini 1.5 Pro
             for model in genai.list_models():
                 if 'generateContent' in model.supported_generation_methods:
-                    if 'gemini-1.5-pro' in model.name:
-                        model_to_use = model.name
-                        break
-                    elif 'gemini' in model.name and not model_to_use:
-                        model_to_use = model.name
+                    available_models.append(model.name)
+                    st.write(f"  - Found: {model.name}")
+                    
+                    # Look for Gemini models
+                    if 'gemini' in model.name.lower():
+                        if '1.5' in model.name and 'pro' in model.name.lower():
+                            self.model_name = model.name
+                            break
+                        elif not self.model_name and 'pro' in model.name.lower():
+                            self.model_name = model.name
             
-            if model_to_use:
-                self.client = genai.GenerativeModel(model_to_use)
-                st.success(f"✅ Gemini AI initialized with model: {model_to_use}")
+            if self.model_name:
+                self.client = genai.GenerativeModel(self.model_name)
+                st.success(f"✅ Gemini AI initialized with model: {self.model_name}")
+            elif available_models:
+                # Use first available model that supports generateContent
+                self.model_name = available_models[0]
+                self.client = genai.GenerativeModel(self.model_name)
+                st.warning(f"⚠️ Using fallback model: {self.model_name}")
             else:
-                st.error("❌ No suitable Gemini model found. Please verify your API key has access to Gemini models.")
+                st.error("❌ No models found that support generateContent")
                 self.client = None
                 
         except Exception as e:
             st.error(f"❌ Error initializing Gemini: {str(e)}")
+            import traceback
+            st.code(traceback.format_exc())
             self.client = None
-    
-    # ... rest of the methods remain the same ...
     
     def analyze_gap(self, isarp_code: str, isarp_text: str, manual_texts: List[str]) -> Dict:
         """
         Perform comprehensive gap analysis using Gemini AI
-        
-        Returns actual AI assessment of compliance status
         """
         if not self.client:
+            st.error(f"❌ No Gemini client available for {isarp_code}")
             return self._fallback_analysis(isarp_code)
         
         # Combine manual texts
-        combined_manuals = "\n\n---\n\n".join(manual_texts[:3])  # Top 3 manuals
+        combined_manuals = "\n\n---\n\n".join(manual_texts[:3])
         
-        prompt = f"""You are an expert IOSA (IATA Operational Safety Audit) auditor conducting a gap analysis.
+        prompt = f"""You are an expert IOSA auditor. Analyze this requirement:
 
-ISARP REQUIREMENT:
-Code: {isarp_code}
-Requirement Text: {isarp_text}
+ISARP: {isarp_code}
+Requirement: {isarp_text}
 
-AIRLINE DOCUMENTATION:
-{combined_manuals}
+Documentation: {combined_manuals[:3000]}
 
-ANALYSIS TASK:
-Evaluate if the airline's documentation demonstrates compliance with this ISARP requirement.
-
-Consider:
-1. DOCUMENTATION: Does the manual explicitly address this requirement with sufficient detail?
-2. MANDATORY LANGUAGE: Does it use appropriate mandatory terms (shall, must, will)?
-3. IMPLEMENTATION: Can this requirement be verified through the documentation?
-4. EVIDENCE: What type of proof would be needed to demonstrate compliance?
-
-Respond in this EXACT JSON format (no additional text):
-{{
-    "status": "Conformity" or "Finding" or "Observation" or "Pending Evidence",
-    "confidence": 0.0-1.0,
-    "documentation_gap": "Brief description of gap if any",
-    "implementation_gap": "What evidence is missing",
-    "manual_references": ["Specific page/section references found"],
-    "evidence_required": ["Types of evidence needed"],
-    "recommended_actions": ["Specific actions to achieve conformity"],
-    "assessment_reasoning": "Detailed explanation of your assessment"
-}}
-
-Classification Guide:
-- Conformity: Fully compliant with documentation and implementation evidence
-- Finding: Non-compliance that impacts safety or mandatory requirement not met
-- Observation: Minor gap or recommended practice not fully implemented
-- Pending Evidence: Documentation exists but implementation proof is needed
-"""
+Return ONLY valid JSON with this structure:
+{{"status": "Conformity|Finding|Observation|Pending Evidence", "confidence": 0.0-1.0, "documentation_gap": "text", "implementation_gap": "text", "manual_references": [], "evidence_required": [], "recommended_actions": [], "assessment_reasoning": "text"}}"""
         
         try:
+            # Debug: Show which model is being used
+            st.info(f"🔄 Analyzing {isarp_code} with model: {self.model_name}")
+            
             response = self.client.generate_content(prompt)
             result = self._parse_gemini_response(response.text, isarp_code)
             return result
+            
         except Exception as e:
-            st.error(f"⚠️ AI Analysis Error for {isarp_code}: {e}")
+            st.error(f"⚠️ AI Analysis Error for {isarp_code}: {str(e)}")
+            # Debug: Print full error
+            import traceback
+            st.code(f"Error details:\n{traceback.format_exc()}")
             return self._fallback_analysis(isarp_code)
     
     def _parse_gemini_response(self, response_text: str, isarp_code: str) -> Dict:
         """Parse Gemini's JSON response"""
         try:
-            # Extract JSON from response (remove markdown code blocks if present)
-            json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
+            # Clean response text
+            cleaned_text = response_text.strip()
+            
+            # Remove markdown code blocks if present
+            if cleaned_text.startswith('```json'):
+                cleaned_text = cleaned_text[7:]
+            elif cleaned_text.startswith('```'):
+                cleaned_text = cleaned_text[3:]
+            if cleaned_text.endswith('```'):
+                cleaned_text = cleaned_text[:-3]
+            
+            cleaned_text = cleaned_text.strip()
+            
+            # Find JSON object
+            json_match = re.search(r'\{.*\}', cleaned_text, re.DOTALL)
             if json_match:
                 json_text = json_match.group(0)
                 result = json.loads(json_text)
@@ -185,8 +188,10 @@ Classification Guide:
                 result['analysis_date'] = datetime.now().isoformat()
                 result['ai_powered'] = True
                 return result
+            
         except Exception as e:
             st.warning(f"⚠️ Parse error for {isarp_code}: {e}")
+            st.code(f"Response text: {response_text[:500]}")
         
         return self._fallback_analysis(isarp_code)
     
@@ -202,50 +207,40 @@ Classification Guide:
             'evidence_required': ['Manual Review Required'],
             'recommended_actions': ['Conduct manual compliance review'],
             'assessment_reasoning': 'Automated analysis unavailable',
-            'ai_powered': False
+            'ai_powered': False,
+            'analysis_date': datetime.now().isoformat()
         }
     
     def check_ipm_1_1_1(self, manual_texts: List[str]) -> Dict:
-        """
-        IPM Section 1.1.1: Documented Policies and Resource Provision
-        """
+        """IPM Section 1.1.1 compliance check"""
         if not self.client:
             return {'error': 'AI unavailable'}
         
         combined = "\n\n".join(manual_texts)
         
-        prompt = f"""Analyze airline documentation for IOSA IPM Section 1.1.1 compliance:
-"Documented Policies and Provision of Resources"
+        prompt = f"""Analyze this documentation for IOSA IPM 1.1.1 compliance.
 
-DOCUMENTATION PROVIDED:
-{combined[:8000]}
+Documentation: {combined[:5000]}
 
-REQUIREMENTS:
-1. Documented safety policies
-2. Documented operational policies
-3. Management commitment statement
-4. Resource provision commitment (personnel, equipment, training, facilities)
-5. Accountability assignment
-6. Review and update mechanisms
-
-Respond in EXACT JSON format:
-{{
-    "has_documented_policy": true/false,
-    "has_resource_provision": true/false,
-    "policy_clarity": "HIGH/MEDIUM/LOW",
-    "resource_specificity": "HIGH/MEDIUM/LOW",
-    "policy_excerpts": ["Quote 1", "Quote 2"],
-    "resource_excerpts": ["Quote 1", "Quote 2"],
-    "gaps": ["Gap 1", "Gap 2"],
-    "recommendations": ["Recommendation 1", "Recommendation 2"],
-    "compliant": true/false
-}}"""
+Return JSON:
+{{"has_documented_policy": true/false, "has_resource_provision": true/false, "policy_clarity": "HIGH/MEDIUM/LOW", "resource_specificity": "HIGH/MEDIUM/LOW", "policy_excerpts": [], "resource_excerpts": [], "gaps": [], "recommendations": [], "compliant": true/false}}"""
         
         try:
             response = self.client.generate_content(prompt)
-            json_match = re.search(r'\{.*\}', response.text, re.DOTALL)
+            
+            # Clean and parse response
+            cleaned = response.text.strip()
+            if cleaned.startswith('```json'):
+                cleaned = cleaned[7:]
+            elif cleaned.startswith('```'):
+                cleaned = cleaned[3:]
+            if cleaned.endswith('```'):
+                cleaned = cleaned[:-3]
+            
+            json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group(0))
+                
         except Exception as e:
             st.error(f"IPM 1.1.1 Analysis Error: {e}")
         
