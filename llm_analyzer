@@ -9,8 +9,9 @@ from loguru import logger
 import json
 import re
 
-from app.config import settings, ConformityStatus, EvidenceType
-from app.utils.pdf_parser import ISARPRequirement
+# Use flat imports since all files are in the same directory
+from config import settings, ConformityStatus, EvidenceType
+from pdf_parser import ISARPRequirement
 
 
 class ClaudeAnalyzer:
@@ -26,13 +27,6 @@ class ClaudeAnalyzer:
     def analyze_gap(self, isarp: ISARPRequirement, manual_passages: List[Dict]) -> Dict:
         """
         Perform comprehensive gap analysis between ISARP and manual provisions
-        
-        Args:
-            isarp: ISARP requirement object
-            manual_passages: List of relevant manual passages from vector search
-        
-        Returns:
-            Dictionary with conformity assessment and detailed reasoning
         """
         # Build the analysis prompt
         prompt = self._build_gap_analysis_prompt(isarp, manual_passages)
@@ -63,17 +57,22 @@ class ClaudeAnalyzer:
             return {
                 "isarp_code": isarp.code,
                 "status": ConformityStatus.NOT_ASSESSED,
+                "manual_quote": "ERROR",
+                "manual_reference": "N/A",
                 "reasoning": f"Error during analysis: {str(e)}",
                 "confidence": 0.0
             }
     
     def _build_gap_analysis_prompt(self, isarp: ISARPRequirement, manual_passages: List[Dict]) -> str:
-    passages_text = "\n\n".join([
-        f"SOURCE: {p['metadata']['manual_name']} | PAGE: {p['metadata']['page_number']}\nCONTENT: {p['text']}"
-        for p in manual_passages
-    ])
-    
-    return f"""You are a Lead IOSA Auditor. You must perform a line-by-line verification.
+        """Build detailed prompt for gap analysis with direct manual quotes"""
+        
+        # Format manual passages for the prompt
+        passages_text = "\n\n".join([
+            f"SOURCE: {p['metadata'].get('manual_name', 'Unknown Manual')} | PAGE: {p['metadata'].get('page_number', 'N/A')}\nCONTENT: {p['text']}"
+            for p in manual_passages
+        ])
+        
+        prompt = f"""You are a Lead IOSA Auditor. You must perform a line-by-line verification.
 
 ISARP REQUIREMENT to verify:
 {isarp.code}: {isarp.requirement_text}
@@ -86,32 +85,30 @@ INSTRUCTIONS:
 2. If found, provide the "Exact Quote" and the "Reference" (Manual Name and Page).
 3. If NO sentence fulfills the requirement, you MUST state "MISSING" in the manual_quote field.
 4. Categorize as CONFORMITY only if the quote uses mandatory language (shall/must).
+5. If information is insufficient, classify as PENDING_EVIDENCE and specify what's needed.
 
 RESPONSE FORMAT (Strict JSON):
 {{
     "status": "CONFORMITY|FINDING|PENDING_EVIDENCE",
-    "isarp_code": "{isarp.code}",
     "manual_quote": "The exact sentence from the manual or 'MISSING'",
     "manual_reference": "Manual Name, Page X",
     "documentation_gap": "If missing, explain exactly what the manual lacks",
-    "reasoning": "Brief audit justification"
+    "reasoning": "Brief audit justification",
+    "confidence": 0.0-1.0
 }}
+
+Be precise, objective, and cite specific manual references.
 """
-Be precise, objective, and cite specific manual references. If information is insufficient, classify as PENDING_EVIDENCE and specify what's needed.
-"""
-        
         return prompt
     
     def _parse_gap_analysis_response(self, response_text: str) -> Dict:
         """Parse Claude's response into structured format"""
         try:
-            # Extract JSON from response
-            # Claude might wrap JSON in markdown code blocks
+            # Extract JSON from response (handles markdown blocks)
             json_match = re.search(r'```json\s*(.*?)\s*```', response_text, re.DOTALL)
             if json_match:
                 json_text = json_match.group(1)
             else:
-                # Try to find JSON directly
                 json_match = re.search(r'\{.*\}', response_text, re.DOTALL)
                 if json_match:
                     json_text = json_match.group(0)
@@ -120,9 +117,8 @@ Be precise, objective, and cite specific manual references. If information is in
             
             result = json.loads(json_text)
             
-            # Validate required fields
-            required_fields = ["status", "confidence", "reasoning"]
-            for field in required_fields:
+            # Ensure required fields exist
+            for field in ["status", "confidence", "reasoning", "manual_quote"]:
                 if field not in result:
                     result[field] = "N/A" if field != "confidence" else 0.0
             
@@ -130,19 +126,16 @@ Be precise, objective, and cite specific manual references. If information is in
             
         except json.JSONDecodeError as e:
             logger.error(f"Failed to parse JSON response: {e}")
-            # Return a structured error response
             return {
                 "status": ConformityStatus.NOT_ASSESSED,
                 "confidence": 0.0,
+                "manual_quote": "ERROR",
                 "reasoning": "Failed to parse analysis response",
                 "raw_response": response_text
             }
     
     def assess_ipm_1_1_1_compliance(self, manual_passages: List[Dict]) -> Dict:
-        """
-        Specific assessment for IPM Section 1.1.1:
-        Documented Policies and Resource Provision
-        """
+        """Specific assessment for IPM Section 1.1.1"""
         prompt = f"""You are analyzing airline documentation for compliance with IOSA IPM Section 1.1.1: "Documented Policies and Provision of Resources".
 
 REQUIREMENT DETAILS:
@@ -161,7 +154,6 @@ Evaluate if the documentation contains:
 - Resource provision commitments
 - Specific resource types mentioned (personnel, equipment, training, facilities)
 - Accountability assignment
-- Review and update mechanisms
 
 Respond in JSON format:
 {{
@@ -174,7 +166,6 @@ Respond in JSON format:
     "recommendations": ["Specific improvements needed"]
 }}
 """
-        
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -182,19 +173,13 @@ Respond in JSON format:
                 temperature=self.temperature,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
             return self._parse_gap_analysis_response(response.content[0].text)
         except Exception as e:
             logger.error(f"Error in IPM 1.1.1 assessment: {e}")
             return {"error": str(e)}
     
-    def validate_evidence_document(self, isarp: ISARPRequirement, 
-                                  evidence_text: str, 
-                                  evidence_type: str) -> Dict:
-        """
-        Validate if an evidence document actually proves compliance
-        Following IPM 6.7.1 implementation proof requirements
-        """
+    def validate_evidence_document(self, isarp: ISARPRequirement, evidence_text: str, evidence_type: str) -> Dict:
+        """Validate if an evidence document actually proves implementation"""
         prompt = f"""You are validating evidence documentation for IOSA compliance.
 
 ISARP REQUIREMENT:
@@ -203,17 +188,16 @@ ISARP REQUIREMENT:
 SUBMITTED EVIDENCE:
 Type: {evidence_type}
 Content:
-{evidence_text[:2000]}  # Limit to first 2000 chars
+{evidence_text[:2000]}
 
 VALIDATION CRITERIA:
 Does this evidence document prove that the requirement is IMPLEMENTED (not just documented)?
 
 Check for:
-1. Specific dates/timestamps showing the practice is active
-2. Real data/records (not just template statements)
-3. Personnel names, signatures, or approvals
-4. Quantifiable metrics or results
-5. Consistency with the requirement's technical specifications
+1. Specific dates/timestamps
+2. Real data/records
+3. Signatures or approvals
+4. Quantifiable results
 
 Respond in JSON:
 {{
@@ -221,10 +205,9 @@ Respond in JSON:
     "evidence_quality": "STRONG|ADEQUATE|WEAK",
     "proves_implementation": true/false,
     "gaps": ["What's missing"],
-    "recommendation": "Accept/Request additional evidence/Reject"
+    "recommendation": "Accept/Reject"
 }}
 """
-        
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -232,7 +215,6 @@ Respond in JSON:
                 temperature=0.1,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
             return self._parse_gap_analysis_response(response.content[0].text)
         except Exception as e:
             logger.error(f"Error validating evidence: {e}")
@@ -241,22 +223,18 @@ Respond in JSON:
     def _format_passages(self, passages: List[Dict]) -> str:
         """Format manual passages for prompt"""
         return "\n\n".join([
-            f"[{p['metadata']['manual_type']}, Page {p['metadata']['page_number']}]\n{p['text']}"
+            f"[{p['metadata'].get('manual_type', 'Manual')}, Page {p['metadata'].get('page_number', 'N/A')}]\n{p['text']}"
             for p in passages
         ])
-    
+
     def generate_compliance_summary(self, gap_analysis_results: List[Dict]) -> str:
         """Generate executive summary of gap analysis results"""
-        
-        # Count statuses
         status_counts = {}
         for result in gap_analysis_results:
             status = result.get('status', 'UNKNOWN')
             status_counts[status] = status_counts.get(status, 0) + 1
         
-        # Extract critical findings
         findings = [r for r in gap_analysis_results if r.get('status') == ConformityStatus.FINDING]
-        observations = [r for r in gap_analysis_results if r.get('status') == ConformityStatus.OBSERVATION]
         
         prompt = f"""Generate an executive summary for an IOSA gap analysis audit.
 
@@ -264,23 +242,13 @@ STATISTICS:
 Total ISARPs Assessed: {len(gap_analysis_results)}
 Conformity: {status_counts.get(ConformityStatus.CONFORMITY, 0)}
 Findings: {status_counts.get(ConformityStatus.FINDING, 0)}
-Observations: {status_counts.get(ConformityStatus.OBSERVATION, 0)}
 Pending Evidence: {status_counts.get(ConformityStatus.PENDING_EVIDENCE, 0)}
 
 CRITICAL FINDINGS:
-{json.dumps([{
-    'code': f.get('isarp_code'),
-    'issue': f.get('documentation_gap', 'N/A')
-} for f in findings[:5]], indent=2)}
+{json.dumps([{ 'code': f.get('isarp_code'), 'issue': f.get('documentation_gap', 'N/A') } for f in findings[:5]], indent=2)}
 
-Generate a 3-paragraph executive summary highlighting:
-1. Overall compliance posture
-2. Critical areas requiring immediate attention
-3. Recommended next steps
-
-Keep it professional, objective, and audit-ready.
+Generate a professional, 3-paragraph executive summary highlighting compliance posture and next steps.
 """
-        
         try:
             response = self.client.messages.create(
                 model=self.model,
@@ -288,34 +256,19 @@ Keep it professional, objective, and audit-ready.
                 temperature=0.3,
                 messages=[{"role": "user", "content": prompt}]
             )
-            
             return response.content[0].text
         except Exception as e:
             logger.error(f"Error generating summary: {e}")
             return "Error generating summary."
 
 
-# Utility function for batch processing
-def batch_analyze_isarps(analyzer: ClaudeAnalyzer, 
-                        isarps: List[ISARPRequirement],
-                        vector_store,
-                        batch_size: int = 5) -> List[Dict]:
-    """
-    Batch process ISARP gap analysis
-    Processes in batches to manage API rate limits
-    """
+def batch_analyze_isarps(analyzer: ClaudeAnalyzer, isarps: List[ISARPRequirement], vector_store, batch_size: int = 5) -> List[Dict]:
+    """Batch process ISARP gap analysis"""
     results = []
-    
     for i in range(0, len(isarps), batch_size):
         batch = isarps[i:i + batch_size]
-        logger.info(f"Processing batch {i//batch_size + 1}/{len(isarps)//batch_size + 1}")
-        
         for isarp in batch:
-            # Get relevant manual passages
             manual_passages = vector_store.hybrid_search(isarp, top_k=5)
-            
-            # Analyze gap
             result = analyzer.analyze_gap(isarp, manual_passages)
             results.append(result)
-    
     return results
