@@ -100,7 +100,36 @@ class GapAnalysisEngine:
                 results[path.name] = f"ERROR: {str(e)}"
         
         return results
+   def _build_gap_analysis_prompt(self, isarp: ISARPRequirement, manual_passages: List[Dict]) -> str:
+    # Format manual passages with clear source tagging
+    passages_text = "\n\n".join([
+        f"SOURCE: {p['metadata'].get('manual_name', 'Unknown Manual')} | PAGE: {p['metadata'].get('page_number', 'N/A')}\nCONTENT: {p['text']}"
+        for p in manual_passages
+    ])
     
+    return f"""You are a Lead IOSA Auditor. Line-by-line verification is mandatory.
+
+ISARP REQUIREMENT:
+{isarp.code}: {isarp.requirement_text}
+
+AIRLINE MANUAL CONTENT:
+{passages_text}
+
+INSTRUCTIONS:
+1. Search the content for the EXACT sentence that satisfies this ISARP.
+2. If found, copy it exactly into 'manual_quote' and provide the 'manual_reference'.
+3. If no sentence satisfies the requirement, you MUST set 'manual_quote' to "MISSING" and 'status' to "FINDING".
+4. Use CONFORMITY only if the quote uses mandatory language (shall, must, will).
+
+JSON RESPONSE FORMAT:
+{{
+    "status": "CONFORMITY|FINDING|PENDING_EVIDENCE",
+    "manual_quote": "The exact sentence from the manual or 'MISSING'",
+    "manual_reference": "Manual Name, Page X",
+    "documentation_gap": "Specific description of what is missing",
+    "reasoning": "Audit justification"
+}}
+""" 
     def run_gap_analysis(self, isarp_codes: Optional[List[str]] = None,
                         category: Optional[str] = None) -> List[Dict]:
         """
