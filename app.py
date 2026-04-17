@@ -91,8 +91,8 @@ def _initialize_client(self):
     try:
         import google.generativeai as genai
         genai.configure(api_key=self.api_key)
-        # CHANGE THIS LINE:
-        self.client = genai.GenerativeModel('gemini-1.5-pro-002') 
+        # Use the exact model name from the list_models() output
+        self.client = genai.GenerativeModel('models/gemini-1.5-pro')  # or 'gemini-1.5-pro'
     except Exception as e:
         st.error(f"❌ Error initializing Gemini: {e}")
     
