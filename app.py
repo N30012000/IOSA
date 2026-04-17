@@ -85,16 +85,16 @@ class GeminiAnalyzer:
         self.client = None
         self._initialize_client()
     
-    def _initialize_client(self):
-        """Initialize Gemini API client"""
-        try:
-            import google.generativeai as genai
-            genai.configure(api_key=self.api_key)
-            self.client = genai.GenerativeModel('gemini-1.5-flash')
-        except ImportError:
-            st.error("❌ Google Generative AI not installed. Run: pip install google-generativeai")
-        except Exception as e:
-            st.error(f"❌ Error initializing Gemini: {e}")
+# Around line 78 in app.py
+def _initialize_client(self):
+    """Initialize Gemini API client"""
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=self.api_key)
+        # CHANGE THIS LINE:
+        self.client = genai.GenerativeModel('gemini-1.5-pro-002') 
+    except Exception as e:
+        st.error(f"❌ Error initializing Gemini: {e}")
     
     def analyze_gap(self, isarp_code: str, isarp_text: str, manual_texts: List[str]) -> Dict:
         """
