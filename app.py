@@ -87,42 +87,38 @@ class GeminiAnalyzer:
         self._initialize_client()
     
     def _initialize_client(self):
-    """Initialize Gemini API client with Gemini 2.0 Flash"""
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=self.api_key)
-        
-        # Try these models in order
-        model_names = [
-            'gemini-2.0-flash-exp',  # Latest experimental
-            'gemini-1.5-flash',      # Faster, widely available
-            'gemini-pro',            # Original Gemini Pro
-            'models/gemini-pro'      # Alternative format
-        ]
-        
-        for model_name in model_names:
-            try:
-                self.client = genai.GenerativeModel(model_name)
-                self.model_name = model_name
-                st.success(f"✅ Connected to {model_name}")
-                return
-            except Exception as e:
-                st.warning(f"Failed to connect to {model_name}: {e}")
-                continue
-        
-        st.error("❌ Could not connect to any Gemini model")
-        self.client = None
-        
-    except Exception as e:
-        st.error(f"❌ Error: {e}")
-        self.client = None
+        """Initialize Gemini API client with Gemini 2.0 Flash"""
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            
+            # Try these models in order
+            model_names = [
+                'gemini-2.0-flash-exp',
+                'gemini-1.5-flash',
+                'gemini-1.5-pro',
+                'gemini-pro'
+            ]
+            
+            for model_name in model_names:
+                try:
+                    self.client = genai.GenerativeModel(model_name)
+                    self.model_name = model_name
+                    st.success(f"✅ Connected to {model_name}")
+                    return
+                except Exception as e:
+                    continue
+            
+            st.error("❌ Could not connect to any Gemini model")
+            self.client = None
+            
+        except Exception as e:
+            st.error(f"❌ Error initializing Gemini: {e}")
+            self.client = None
     
     def analyze_gap(self, isarp_code: str, isarp_text: str, manual_texts: List[str]) -> Dict:
-        """
-        Perform comprehensive gap analysis using Gemini AI
-        """
+        """Perform comprehensive gap analysis using Gemini AI"""
         if not self.client:
-            st.error(f"❌ No Gemini client available for {isarp_code}")
             return self._fallback_analysis(isarp_code)
         
         # Combine manual texts
@@ -139,18 +135,11 @@ Return ONLY valid JSON with this structure:
 {{"status": "Conformity|Finding|Observation|Pending Evidence", "confidence": 0.0-1.0, "documentation_gap": "text", "implementation_gap": "text", "manual_references": [], "evidence_required": [], "recommended_actions": [], "assessment_reasoning": "text"}}"""
         
         try:
-            # Debug: Show which model is being used
-            st.info(f"🔄 Analyzing {isarp_code} with model: {self.model_name}")
-            
             response = self.client.generate_content(prompt)
             result = self._parse_gemini_response(response.text, isarp_code)
             return result
-            
         except Exception as e:
-            st.error(f"⚠️ AI Analysis Error for {isarp_code}: {str(e)}")
-            # Debug: Print full error
-            import traceback
-            st.code(f"Error details:\n{traceback.format_exc()}")
+            st.error(f"⚠️ AI Analysis Error for {isarp_code}: {e}")
             return self._fallback_analysis(isarp_code)
     
     def _parse_gemini_response(self, response_text: str, isarp_code: str) -> Dict:
@@ -159,7 +148,7 @@ Return ONLY valid JSON with this structure:
             # Clean response text
             cleaned_text = response_text.strip()
             
-            # Remove markdown code blocks if present
+            # Remove markdown code blocks
             if cleaned_text.startswith('```json'):
                 cleaned_text = cleaned_text[7:]
             elif cleaned_text.startswith('```'):
@@ -178,10 +167,8 @@ Return ONLY valid JSON with this structure:
                 result['analysis_date'] = datetime.now().isoformat()
                 result['ai_powered'] = True
                 return result
-            
         except Exception as e:
             st.warning(f"⚠️ Parse error for {isarp_code}: {e}")
-            st.code(f"Response text: {response_text[:500]}")
         
         return self._fallback_analysis(isarp_code)
     
@@ -197,8 +184,7 @@ Return ONLY valid JSON with this structure:
             'evidence_required': ['Manual Review Required'],
             'recommended_actions': ['Conduct manual compliance review'],
             'assessment_reasoning': 'Automated analysis unavailable',
-            'ai_powered': False,
-            'analysis_date': datetime.now().isoformat()
+            'ai_powered': False
         }
     
     def check_ipm_1_1_1(self, manual_texts: List[str]) -> Dict:
@@ -230,7 +216,6 @@ Return JSON:
             json_match = re.search(r'\{.*\}', cleaned, re.DOTALL)
             if json_match:
                 return json.loads(json_match.group(0))
-                
         except Exception as e:
             st.error(f"IPM 1.1.1 Analysis Error: {e}")
         
