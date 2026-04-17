@@ -424,24 +424,32 @@ def show_gap_analysis():
             st.session_state.analysis_results = results
             st.success(f"✅ Analyzed {len(results)} ISARPs")
     
-    if st.session_state.analysis_results:
-        st.subheader("Results")
-for result in st.session_state.engine.gap_results:
-    status = result.get('status')
-    is_missing = "MISSING" in result.get('manual_quote', '')
-    
-    # Create a visual container
-    with st.container():
-        if is_missing or status == "FINDING":
-            # Highlight missing or non-compliant ISARPs in Red
-            st.error(f"### 🔴 {result['isarp_code']} - NOT FOUND IN MANUAL")
-            st.markdown(f"**Documentation Gap:** {result['documentation_gap']}")
-        else:
-            st.success(f"### ✅ {result['isarp_code']} - CONFORMITY")
-            st.markdown(f"**Found in Manual:** \"{result['manual_quote']}\"")
-            st.caption(f"**Reference:** {result['manual_reference']}")
-        if st.session_state.analysis_complete and st.session_state.engine.gap_results:
+# Initialization (defensive check)
+if 'engine' not in st.session_state:
+    from gap_analyzer import GapAnalysisEngine
+    st.session_state.engine = GapAnalysisEngine()
+
+# Corrected Audit Results Display Logic
+if st.session_state.get('analysis_complete') and st.session_state.engine.gap_results:
     st.markdown("---")
+    st.subheader("📋 Audit Findings (Line-by-Line Verification)")
+    
+    for result in st.session_state.engine.gap_results:
+        # Check if the requirement was marked as MISSING by the AI
+        is_missing = result.get('manual_quote') == "MISSING" or result.get('status') == "FINDING"
+        
+        with st.expander(f"{'🔴' if is_missing else '✅'} {result.get('isarp_code', 'N/A')}", expanded=is_missing):
+            if is_missing:
+                st.error("**STATUS: FINDING - REQUIREMENT NOT FOUND**")
+                st.markdown(f"**Documentation Gap:** {result.get('documentation_gap', 'No specific gap description provided.')}")
+            else:
+                st.success("**STATUS: CONFORMITY**")
+                # Showing the authentic line from the manual
+                st.markdown(f"**Manual Quote:** *\"{result.get('manual_quote')}\"*")
+                st.caption(f"**Source Reference:** {result.get('manual_reference')}")
+            
+            st.info(f"**Auditor Justification:** {result.get('reasoning')}")
+    st.markdown("---") # This line now follows the loop correctly
     st.subheader("📋 Audit Findings")
     
     for result in st.session_state.engine.gap_results:
