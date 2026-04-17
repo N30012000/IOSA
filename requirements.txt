@@ -1,39 +1,15 @@
---extra-index-url https://download.pytorch.org/whl/cpu
+# Sial-Compliance-Pro - Professional Edition Requirements
+# Production-ready dependencies with AI integration
 
 # Core Framework
-streamlit>=1.29.0
-flask>=3.0.0
+streamlit==1.29.0
 
-# PDF Processing 
-PyMuPDF>=1.23.8
-pdfplumber>=0.10.3
-PyPDF2>=3.0.1
-# Add this to your existing requirements
-python-docx>=1.1.0
-# Vector Database & Embeddings
-chromadb>=0.4.18
-faiss-cpu>=1.7.4
-sentence-transformers>=2.2.2
+# PDF Processing
+PyMuPDF==1.23.8
 
-# LLM Integration
-anthropic>=0.8.1
-langchain>=0.1.0
-langchain-anthropic>=0.1.0
+# Data Processing & Export
+pandas==2.1.4
+openpyxl==3.1.2
 
-# Data Processing
-pandas>=2.1.4
-numpy>=1.26.2
-openpyxl>=3.1.2
-
-# Database
-sqlalchemy>=2.0.23
-
-# Utilities
-python-dotenv>=1.0.0
-pydantic>=2.5.3
-pydantic-settings>=2.1.0
-tqdm>=4.66.1
-regex>=2023.12.25
-
-# Logging & Monitoring
-loguru>=0.7.2
+# Google Gemini AI Integration
+google-generativeai==0.3.2
