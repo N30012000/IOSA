@@ -85,19 +85,18 @@ class GeminiAnalyzer:
         self.client = None
         self._initialize_client()
     
-# Around line 78 in app.py
-def _initialize_client(self):
-    """Initialize Gemini API client"""
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=self.api_key)
-        # Use the exact model name from the list_models() output
-        self.client = genai.GenerativeModel('models/gemini-1.5-pro')  # or 'gemini-1.5-pro'
-    except Exception as e:
-        st.error(f"❌ Error initializing Gemini: {e}")
+    def _initialize_client(self):
+        """Initialize Gemini API client"""
+        try:
+            import google.generativeai as genai
+            genai.configure(api_key=self.api_key)
+            # Use the exact model name that supports generateContent
+            self.client = genai.GenerativeModel('models/gemini-1.5-pro')
+        except Exception as e:
+            st.error(f"❌ Error initializing Gemini: {e}")
     
     def analyze_gap(self, isarp_code: str, isarp_text: str, manual_texts: List[str]) -> Dict:
-        """
+        # ... rest of your method unchanged ...        """
         Perform comprehensive gap analysis using Gemini AI
         
         Returns actual AI assessment of compliance status
