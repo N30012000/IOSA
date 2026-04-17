@@ -413,7 +413,22 @@ def show_gap_analysis():
     
     if st.session_state.analysis_results:
         st.subheader("Results")
+for result in st.session_state.engine.gap_results:
+    status = result.get('status')
+    is_missing = "MISSING" in result.get('manual_quote', '')
+    
+    # Create a visual container
+    with st.container():
+        if is_missing or status == "FINDING":
+            # Highlight missing or non-compliant ISARPs in Red
+            st.error(f"### 🔴 {result['isarp_code']} - NOT FOUND IN MANUAL")
+            st.markdown(f"**Documentation Gap:** {result['documentation_gap']}")
+        else:
+            st.success(f"### ✅ {result['isarp_code']} - CONFORMITY")
+            st.markdown(f"**Found in Manual:** \"{result['manual_quote']}\"")
+            st.caption(f"**Reference:** {result['manual_reference']}")
         
+        st.divider()        
         df = pd.DataFrame([
             {
                 'ISARP': r['isarp_code'],
