@@ -1,24 +1,24 @@
-"""
-Sial-Compliance-Pro - Professional IOSA/EASA Gap Analysis System
-Enterprise-grade Aviation Regulatory Compliance Tool with AI-Powered Analysis
-"""
-
-import streamlit as st
-import pandas as pd
-from datetime import datetime
-from pathlib import Path
-import tempfile
-import json
-import re
-import io
-from typing import List, Dict, Optional
-import time
-
-# ============================================================================
-# CONFIGURATION & CONSTANTS
-# ============================================================================
-
-class Config:
+    """
+    Sial-Compliance-Pro - Professional IOSA/EASA Gap Analysis System
+    Enterprise-grade Aviation Regulatory Compliance Tool with AI-Powered Analysis
+    """
+    
+    import streamlit as st
+    import pandas as pd
+    from datetime import datetime
+    from pathlib import Path
+    import tempfile
+    import json
+    import re
+    import io
+    from typing import List, Dict, Optional
+    import time
+    
+    # ============================================================================
+    # CONFIGURATION & CONSTANTS
+    # ============================================================================
+    
+    class Config:
     """Application configuration and constants"""
     
     # Directories
@@ -70,14 +70,14 @@ class Config:
         """Initialize application directories"""
         for directory in [cls.ISM_DIR, cls.MANUALS_DIR, cls.EVIDENCE_DIR, cls.OUTPUTS_DIR]:
             directory.mkdir(parents=True, exist_ok=True)
-
-Config.setup()
-
-# ============================================================================
-# AI ANALYSIS ENGINE (Google Gemini Integration)
-# ============================================================================
-
-class GeminiAnalyzer:
+    
+    Config.setup()
+    
+    # ============================================================================
+    # AI ANALYSIS ENGINE (Google Gemini Integration)
+    # ============================================================================
+    
+    class GeminiAnalyzer:
     """Google Gemini AI integration for gap analysis"""
     
     def __init__(self, api_key: str):
@@ -125,14 +125,14 @@ class GeminiAnalyzer:
         combined_manuals = "\n\n---\n\n".join(manual_texts[:3])
         
         prompt = f"""You are an expert IOSA auditor. Analyze this requirement:
-
-ISARP: {isarp_code}
-Requirement: {isarp_text}
-
-Documentation: {combined_manuals[:3000]}
-
-Return ONLY valid JSON with this structure:
-{{"status": "Conformity|Finding|Observation|Pending Evidence", "confidence": 0.0-1.0, "documentation_gap": "text", "implementation_gap": "text", "manual_references": [], "evidence_required": [], "recommended_actions": [], "assessment_reasoning": "text"}}"""
+    
+    ISARP: {isarp_code}
+    Requirement: {isarp_text}
+    
+    Documentation: {combined_manuals[:3000]}
+    
+    Return ONLY valid JSON with this structure:
+    {{"status": "Conformity|Finding|Observation|Pending Evidence", "confidence": 0.0-1.0, "documentation_gap": "text", "implementation_gap": "text", "manual_references": [], "evidence_required": [], "recommended_actions": [], "assessment_reasoning": "text"}}"""
         
         try:
             response = self.client.generate_content(prompt)
@@ -195,11 +195,11 @@ Return ONLY valid JSON with this structure:
         combined = "\n\n".join(manual_texts)
         
         prompt = f"""Analyze this documentation for IOSA IPM 1.1.1 compliance.
-
-Documentation: {combined[:5000]}
-
-Return JSON:
-{{"has_documented_policy": true/false, "has_resource_provision": true/false, "policy_clarity": "HIGH/MEDIUM/LOW", "resource_specificity": "HIGH/MEDIUM/LOW", "policy_excerpts": [], "resource_excerpts": [], "gaps": [], "recommendations": [], "compliant": true/false}}"""
+    
+    Documentation: {combined[:5000]}
+    
+    Return JSON:
+    {{"has_documented_policy": true/false, "has_resource_provision": true/false, "policy_clarity": "HIGH/MEDIUM/LOW", "resource_specificity": "HIGH/MEDIUM/LOW", "policy_excerpts": [], "resource_excerpts": [], "gaps": [], "recommendations": [], "compliant": true/false}}"""
         
         try:
             response = self.client.generate_content(prompt)
@@ -220,12 +220,12 @@ Return JSON:
             st.error(f"IPM 1.1.1 Analysis Error: {e}")
         
         return {'error': 'Analysis failed'}
-
-# ============================================================================
-# PDF PROCESSING ENGINE
-# ============================================================================
-
-class PDFProcessor:
+    
+    # ============================================================================
+    # PDF PROCESSING ENGINE
+    # ============================================================================
+    
+    class PDFProcessor:
     """Advanced PDF text extraction and ISARP parsing"""
     
     @staticmethod
@@ -317,12 +317,12 @@ class PDFProcessor:
                 return manual_type
         
         return 'GENERAL'
-
-# ============================================================================
-# SESSION STATE MANAGEMENT
-# ============================================================================
-
-def init_session_state():
+    
+    # ============================================================================
+    # SESSION STATE MANAGEMENT
+    # ============================================================================
+    
+    def init_session_state():
     """Initialize all session state variables"""
     defaults = {
         'api_key': '',
@@ -339,12 +339,12 @@ def init_session_state():
     for key, value in defaults.items():
         if key not in st.session_state:
             st.session_state[key] = value
-
-# ============================================================================
-# STATISTICS & METRICS
-# ============================================================================
-
-def get_statistics() -> Dict:
+    
+    # ============================================================================
+    # STATISTICS & METRICS
+    # ============================================================================
+    
+    def get_statistics() -> Dict:
     """Calculate comprehensive statistics"""
     total = len(st.session_state.isarps)
     analyzed = len(st.session_state.analysis_results)
@@ -381,21 +381,21 @@ def get_statistics() -> Dict:
         'conformity_rate': (conformity / analyzed) * 100,
         'compliance_score': compliance_score
     }
-
-# ============================================================================
-# STREAMLIT UI CONFIGURATION
-# ============================================================================
-
-st.set_page_config(
+    
+    # ============================================================================
+    # STREAMLIT UI CONFIGURATION
+    # ============================================================================
+    
+    st.set_page_config(
     page_title="Sial-Compliance-Pro | IOSA Gap Analysis",
     page_icon="✈️",
     layout="wide",
     initial_sidebar_state="expanded"
-)
-
-# Professional CSS Styling
-st.markdown("""
-<style>
+    )
+    
+    # Professional CSS Styling
+    st.markdown("""
+    <style>
     .main-header {
         font-size: 2.8rem;
         font-weight: 700;
@@ -457,14 +457,14 @@ st.markdown("""
         font-size: 0.75rem;
         font-weight: 600;
     }
-</style>
-""", unsafe_allow_html=True)
-
-# ============================================================================
-# MAIN APPLICATION
-# ============================================================================
-
-def main():
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # ============================================================================
+    # MAIN APPLICATION
+    # ============================================================================
+    
+    def main():
     init_session_state()
     
     # Header
@@ -518,12 +518,12 @@ def main():
         show_evidence()
     elif page == "📈 Reports & Export":
         show_reports()
-
-# ============================================================================
-# API SETUP PAGE
-# ============================================================================
-
-def show_api_setup():
+    
+    # ============================================================================
+    # API SETUP PAGE
+    # ============================================================================
+    
+    def show_api_setup():
     """API configuration page"""
     st.markdown("## 🔑 API Configuration")
     
@@ -569,12 +569,12 @@ def show_api_setup():
                     st.error(f"❌ API Error: {e}")
             else:
                 st.error("❌ Invalid API key format")
-
-# ============================================================================
-# DASHBOARD PAGE
-# ============================================================================
-
-def show_dashboard():
+    
+    # ============================================================================
+    # DASHBOARD PAGE
+    # ============================================================================
+    
+    def show_dashboard():
     """Main dashboard with analytics"""
     st.header("📊 Compliance Dashboard")
     
@@ -684,12 +684,12 @@ def show_dashboard():
     
     else:
         st.info("📤 Upload IOSA Standards Manual and airline manuals to begin analysis")
-
-# ============================================================================
-# DOCUMENT MANAGEMENT PAGE
-# ============================================================================
-
-def show_documents():
+    
+    # ============================================================================
+    # DOCUMENT MANAGEMENT PAGE
+    # ============================================================================
+    
+    def show_documents():
     """Document upload and management"""
     st.header("📄 Document Management")
     
@@ -838,12 +838,12 @@ def show_documents():
             ])
             
             st.dataframe(manuals_df, use_container_width=True)
-
-# ============================================================================
-# GAP ANALYSIS PAGE
-# ============================================================================
-
-def show_gap_analysis():
+    
+    # ============================================================================
+    # GAP ANALYSIS PAGE
+    # ============================================================================
+    
+    def show_gap_analysis():
     """AI-powered gap analysis"""
     st.header("🔍 AI-Powered Gap Analysis")
     
@@ -1043,12 +1043,12 @@ def show_gap_analysis():
                         st.markdown(f"✓ {action}")
         else:
             st.info("No results match the selected filters")
-
-# ============================================================================
-# IPM COMPLIANCE PAGE
-# ============================================================================
-
-def show_ipm_compliance():
+    
+    # ============================================================================
+    # IPM COMPLIANCE PAGE
+    # ============================================================================
+    
+    def show_ipm_compliance():
     """IPM Section 1.1.1 Compliance Check"""
     st.header("📋 IPM Section 1.1.1 Compliance")
     
@@ -1135,12 +1135,12 @@ def show_ipm_compliance():
             st.markdown("### 💡 Recommendations")
             for rec in result['recommendations']:
                 st.success(f"✓ {rec}")
-
-# ============================================================================
-# EVIDENCE REGISTRY PAGE
-# ============================================================================
-
-def show_evidence():
+    
+    # ============================================================================
+    # EVIDENCE REGISTRY PAGE
+    # ============================================================================
+    
+    def show_evidence():
     """Evidence document management"""
     st.header("📎 Evidence Registry")
     
@@ -1229,12 +1229,12 @@ def show_evidence():
                     st.markdown(f"**Uploaded:** {evidence['upload_date'][:10]}")
                     st.markdown(f"**Status:** ✅ Validated")
                     st.markdown("---")
-
-# ============================================================================
-# REPORTS & EXPORT PAGE
-# ============================================================================
-
-def show_reports():
+    
+    # ============================================================================
+    # REPORTS & EXPORT PAGE
+    # ============================================================================
+    
+    def show_reports():
     """Generate and export reports"""
     st.header("📈 Reports & Export")
     
@@ -1248,42 +1248,42 @@ def show_reports():
     st.markdown("### 📋 Executive Summary")
     
     summary_text = f"""
-# IOSA Gap Analysis - Executive Report
-
-**Organization:** Sial Aviation  
-**Analysis Date:** {datetime.now().strftime('%B %d, %Y')}  
-**Report Generated:** {datetime.now().strftime('%H:%M %p')}
-
----
-
-## Overview
-
-This report presents the results of a comprehensive IOSA (IATA Operational Safety Audit) gap analysis 
-conducted using AI-powered assessment technology.
-
-### Scope of Analysis
-- **Total ISARPs Assessed:** {stats['analyzed_isarps']}
-- **Airline Manuals Reviewed:** {len(st.session_state.manual_files)}
-- **Evidence Documents:** {len(st.session_state.evidence_files)}
-
-### Compliance Status
-
-| Status | Count | Percentage |
-|--------|-------|------------|
-| ✅ Conformity | {stats['conformity_count']} | {stats['conformity_rate']:.1f}% |
-| 🔴 Findings | {stats['findings_count']} | {(stats['findings_count']/max(stats['analyzed_isarps'],1))*100:.1f}% |
-| ⚠️ Observations | {stats['observations_count']} | {(stats['observations_count']/max(stats['analyzed_isarps'],1))*100:.1f}% |
-| ⏳ Pending Evidence | {stats['pending_evidence_count']} | {(stats['pending_evidence_count']/max(stats['analyzed_isarps'],1))*100:.1f}% |
-
-### Overall Compliance Score: {stats['compliance_score']:.1f}%
-
----
-
-## Critical Findings
-
-The analysis identified **{stats['findings_count']} critical finding(s)** requiring immediate attention.
-
-"""
+    # IOSA Gap Analysis - Executive Report
+    
+    **Organization:** Sial Aviation  
+    **Analysis Date:** {datetime.now().strftime('%B %d, %Y')}  
+    **Report Generated:** {datetime.now().strftime('%H:%M %p')}
+    
+    ---
+    
+    ## Overview
+    
+    This report presents the results of a comprehensive IOSA (IATA Operational Safety Audit) gap analysis 
+    conducted using AI-powered assessment technology.
+    
+    ### Scope of Analysis
+    - **Total ISARPs Assessed:** {stats['analyzed_isarps']}
+    - **Airline Manuals Reviewed:** {len(st.session_state.manual_files)}
+    - **Evidence Documents:** {len(st.session_state.evidence_files)}
+    
+    ### Compliance Status
+    
+    | Status | Count | Percentage |
+    |--------|-------|------------|
+    | ✅ Conformity | {stats['conformity_count']} | {stats['conformity_rate']:.1f}% |
+    | 🔴 Findings | {stats['findings_count']} | {(stats['findings_count']/max(stats['analyzed_isarps'],1))*100:.1f}% |
+    | ⚠️ Observations | {stats['observations_count']} | {(stats['observations_count']/max(stats['analyzed_isarps'],1))*100:.1f}% |
+    | ⏳ Pending Evidence | {stats['pending_evidence_count']} | {(stats['pending_evidence_count']/max(stats['analyzed_isarps'],1))*100:.1f}% |
+    
+    ### Overall Compliance Score: {stats['compliance_score']:.1f}%
+    
+    ---
+    
+    ## Critical Findings
+    
+    The analysis identified **{stats['findings_count']} critical finding(s)** requiring immediate attention.
+    
+    """
     
     # Add critical findings
     findings = [r for r in st.session_state.analysis_results if r['status'] == Config.STATUS_FINDING]
@@ -1293,45 +1293,45 @@ The analysis identified **{stats['findings_count']} critical finding(s)** requir
             summary_text += f"- **{f['isarp_code']}**: {f['documentation_gap']}\n"
     
     summary_text += f"""
-
----
-
-## Recommendations
-
-### Immediate Actions (0-30 days)
-1. Address all {stats['findings_count']} critical findings
-2. Upload implementation evidence for {stats['pending_evidence_count']} pending ISARPs
-3. Review and update affected operational manuals
-
-### Short-term Actions (30-90 days)
-1. Resolve {stats['observations_count']} observations
-2. Conduct internal compliance review
-3. Update training programs based on gaps identified
-
-### Long-term Actions (90+ days)
-1. Implement continuous compliance monitoring
-2. Schedule follow-up IOSA audit
-3. Establish compliance improvement program
-
----
-
-## Conclusion
-
-Based on the AI-powered gap analysis, the airline demonstrates a **{stats['compliance_score']:.1f}% compliance score**. 
-{"✅ This indicates strong compliance with IOSA standards." if stats['compliance_score'] >= 80 else 
- "⚠️ Significant gaps have been identified that require immediate attention."}
-
-**Next Steps:**
-- Review all findings with department heads
-- Develop action plans for each non-conformity
-- Assign responsibilities and deadlines
-- Schedule progress review in 30 days
-
----
-
-*This report was generated using Sial-Compliance-Pro with AI-powered gap analysis.*
-*Powered by Google Gemini 1.5 Pro*
-"""
+    
+    ---
+    
+    ## Recommendations
+    
+    ### Immediate Actions (0-30 days)
+    1. Address all {stats['findings_count']} critical findings
+    2. Upload implementation evidence for {stats['pending_evidence_count']} pending ISARPs
+    3. Review and update affected operational manuals
+    
+    ### Short-term Actions (30-90 days)
+    1. Resolve {stats['observations_count']} observations
+    2. Conduct internal compliance review
+    3. Update training programs based on gaps identified
+    
+    ### Long-term Actions (90+ days)
+    1. Implement continuous compliance monitoring
+    2. Schedule follow-up IOSA audit
+    3. Establish compliance improvement program
+    
+    ---
+    
+    ## Conclusion
+    
+    Based on the AI-powered gap analysis, the airline demonstrates a **{stats['compliance_score']:.1f}% compliance score**. 
+    {"✅ This indicates strong compliance with IOSA standards." if stats['compliance_score'] >= 80 else 
+    "⚠️ Significant gaps have been identified that require immediate attention."}
+    
+    **Next Steps:**
+    - Review all findings with department heads
+    - Develop action plans for each non-conformity
+    - Assign responsibilities and deadlines
+    - Schedule progress review in 30 days
+    
+    ---
+    
+    *This report was generated using Sial-Compliance-Pro with AI-powered gap analysis.*
+    *Powered by Google Gemini 1.5 Pro*
+    """
     
     st.markdown(summary_text)
     
@@ -1426,10 +1426,10 @@ Based on the AI-powered gap analysis, the airline demonstrates a **{stats['compl
             use_container_width=True,
             help="Download as Markdown (convert to PDF using tools like Pandoc)"
         )
-
-# ============================================================================
-# RUN APPLICATION
-# ============================================================================
-
-if __name__ == "__main__":
+    
+    # ============================================================================
+    # RUN APPLICATION
+    # ============================================================================
+    
+    if __name__ == "__main__":
     main()
